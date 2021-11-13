@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-faster/errors"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -273,21 +274,27 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 	s.mu.Unlock()
 
-	g, ctx := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		<-ctx.Done()
+		<-gCtx.Done()
 		close(s.done)
 		return nil
 	})
 
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
-			var c net.Conn
-			var err error
+			var (
+				c   net.Conn
+				err error
+			)
+
+			reqCtx := &Ctx{}
+			r := bufio.NewReader(nil)
+			w := bufio.NewWriter(nil)
 
 			for {
-				if ctx.Err() != nil {
-					return ctx.Err()
+				if gCtx.Err() != nil {
+					return gCtx.Err()
 				}
 				if c, err = s.accept(ln); err != nil {
 					if err == io.EOF {
@@ -295,9 +302,15 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 					}
 					return err
 				}
+
+				reqCtx.ResetBody()
+				reqCtx.c = c
+				r.Reset(c)
+				w.Reset(c)
+
 				s.setState(c, StateNew)
 				atomic.AddInt32(&s.open, 1)
-				err = s.serveConn(c)
+				err = s.serveConn(reqCtx, r, w)
 				closeErr := c.Close()
 				s.setState(c, StateClosed)
 				if err == nil {
@@ -368,7 +381,7 @@ func (s *Server) ServeConn(c net.Conn) error {
 
 	atomic.AddInt32(&s.open, 1)
 
-	err := s.serveConn(c)
+	err := s.serveConn(&Ctx{c: c}, bufio.NewReader(c), bufio.NewWriter(c))
 
 	closeErr := c.Close()
 	s.setState(c, StateClosed)
@@ -408,7 +421,7 @@ func (s *Server) idleTimeout() time.Duration {
 	return s.ReadTimeout
 }
 
-func (s *Server) serveConn(c net.Conn) (err error) {
+func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err error) {
 	var serverName []byte
 	if !s.NoDefaultServerHeader {
 		serverName = s.getServerName()
@@ -419,17 +432,12 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 	connTime := time.Now()
 	writeTimeout := s.WriteTimeout
 	previousWriteTimeout := time.Duration(0)
-
-	ctx := s.acquireCtx(c)
 	ctx.connTime = connTime
+	c := ctx.c
+
 	var (
-		br *bufio.Reader
-		bw *bufio.Writer
-
-		connectionClose bool
-		isHTTP11        bool
-
-		reqReset bool
+		connClose bool
+		http11    bool
 	)
 	for {
 		requests++
@@ -443,24 +451,18 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			}
 		}
 
-		if br != nil {
-			// If this is a keep-alive connection we want to try and read the first bytes
-			// within the idle time.
-			if requests > 1 {
-				var b []byte
-				b, err = br.Peek(1)
-				if len(b) == 0 {
-					// If reading from a keep-alive connection returns nothing it means
-					// the connection was closed (either timeout or from the other side).
-					if err != io.EOF {
-						err = ErrNothingRead{err}
-					}
+		// If this is a keep-alive connection we want to try and read the first bytes
+		// within the idle time.
+		if requests > 1 {
+			var b []byte
+			b, err = r.Peek(1)
+			if len(b) == 0 {
+				// If reading from a keep-alive connection returns nothing it means
+				// the connection was closed (either timeout or from the other side).
+				if err != io.EOF {
+					err = ErrNothingRead{err}
 				}
 			}
-		} else {
-			// If this is a keep-alive connection acquireByteReader will try to peek
-			// a couple of bytes already so the idle timeout will already be used.
-			br, err = s.acquireByteReader(&ctx)
 		}
 
 		ctx.Response.Header.noDefaultContentType = s.NoDefaultContentType
@@ -489,30 +491,27 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			// we only want to try and read the next headers once.
 			// If we have to wait for the next request we flush the
 			// outgoing buffer first so it doesn't have to wait.
-			if bw != nil && bw.Buffered() > 0 {
-				err = ctx.Request.Header.readLoop(br, false)
+			if w.Buffered() > 0 {
+				err = ctx.Request.Header.readLoop(r, false)
 				if err == errNeedMore {
-					err = bw.Flush()
+					err = w.Flush()
 					if err != nil {
 						break
 					}
 
-					err = ctx.Request.Header.Read(br)
+					err = ctx.Request.Header.Read(r)
 				}
 			} else {
-				err = ctx.Request.Header.Read(br)
+				err = ctx.Request.Header.Read(r)
 			}
-
 			if err == nil {
-				err = ctx.Request.readBody(br)
+				err = ctx.Request.readBody(r)
 			}
-
 			if err == nil {
 				// If we read any bytes off the wire, we're active.
 				s.setState(c, StateActive)
 			}
 		}
-
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -530,41 +529,37 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			}
 
 			if err != nil {
-				bw = s.writeErrorResponse(bw, ctx, serverName, err)
+				s.writeErrorResponse(w, ctx, serverName, err)
 			}
-			break
+
+			return err
 		}
 
 		// 'Expect: 100-continue' request handling.
 		// See https://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html#sec8.2.3 for details.
 		if ctx.Request.MayContinue() {
-			if bw == nil {
-				bw = s.acquireWriter(ctx)
-			}
-
 			// Send 'HTTP/1.1 100 Continue' response.
-			_, err = bw.Write(strResponseContinue)
+			_, err = w.Write(strResponseContinue)
 			if err != nil {
-				break
+				return err
 			}
-			err = bw.Flush()
-			if err != nil {
-				break
+			if err = w.Flush(); err != nil {
+				return err
 			}
 
 			// Read request body.
-			if br == nil {
-				br = s.acquireReader(ctx)
+			if r == nil {
+				r = s.acquireReader(ctx)
 			}
 
-			if err := ctx.Request.ContinueReadBody(br); err != nil {
-				bw = s.writeErrorResponse(bw, ctx, serverName, err)
-				break
+			if err := ctx.Request.ContinueReadBody(r); err != nil {
+				s.writeErrorResponse(w, ctx, serverName, err)
+				return err
 			}
 		}
 
-		connectionClose = ctx.Request.Header.ConnectionClose()
-		isHTTP11 = ctx.Request.Header.IsHTTP11()
+		connClose = ctx.Request.Header.ConnectionClose()
+		http11 = ctx.Request.Header.IsHTTP11()
 
 		if serverName != nil {
 			ctx.Response.Header.SetServerBytes(serverName)
@@ -576,8 +571,6 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		if ctx.IsHead() {
 			ctx.Response.SkipBody = true
 		}
-
-		reqReset = true
 		ctx.Request.Reset()
 
 		if writeTimeout > 0 {
@@ -593,10 +586,10 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			previousWriteTimeout = 0
 		}
 
-		connectionClose = connectionClose || ctx.Response.ConnectionClose() || (s.CloseOnShutdown && atomic.LoadInt32(&s.stop) == 1)
-		if connectionClose {
+		connClose = connClose || ctx.Response.ConnectionClose() || (s.CloseOnShutdown && atomic.LoadInt32(&s.stop) == 1)
+		if connClose {
 			ctx.Response.Header.SetCanonical(strConnection, strClose)
-		} else if !isHTTP11 {
+		} else if !http11 {
 			// Set 'Connection: keep-alive' response header for non-HTTP/1.1 request.
 			// There is no need in setting this header for http/1.1, since in http/1.1
 			// connections are keep-alive by default.
@@ -606,12 +599,8 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		if serverName != nil && len(ctx.Response.Header.Server()) == 0 {
 			ctx.Response.Header.SetServerBytes(serverName)
 		}
-
-		if bw == nil {
-			bw = s.acquireWriter(ctx)
-		}
-		if err = writeResponse(ctx, bw); err != nil {
-			break
+		if err := writeResponse(ctx, w); err != nil {
+			return err
 		}
 
 		// Only flush the writer if we don't have another request in the pipeline.
@@ -619,40 +608,23 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		// This benchmark will send 16 pipelined requests. It is faster to pack as many responses
 		// in a TCP packet and send it back at once than waiting for a flush every request.
 		// In real world circumstances this behaviour could be argued as being wrong.
-		if br == nil || br.Buffered() == 0 || connectionClose {
-			err = bw.Flush()
-			if err != nil {
-				break
+		if r.Buffered() == 0 || connClose {
+			if err := w.Flush(); err != nil {
+				return errors.Wrap(err, "flush")
 			}
 		}
-		if connectionClose {
-			break
+		if connClose {
+			return nil
 		}
 
 		s.setState(c, StateIdle)
 
 		if atomic.LoadInt32(&s.stop) == 1 {
-			err = nil
-			break
+			return nil
 		}
 	}
 
-	if br != nil {
-		s.releaseReader(br)
-	}
-	if bw != nil {
-		s.releaseWriter(bw)
-	}
-	if ctx != nil {
-		// in unexpected cases the for loop will break
-		// before request reset call. in such cases, call it before
-		// release to fix #548
-		if !reqReset {
-			ctx.Request.Reset()
-		}
-		s.releaseCtx(ctx)
-	}
-	return
+	return nil
 }
 
 func (s *Server) setState(nc net.Conn, state ConnState) {
@@ -671,38 +643,6 @@ const (
 	defaultReadBufferSize  = 4096
 	defaultWriteBufferSize = 4096
 )
-
-func (s *Server) acquireByteReader(ctxP **Ctx) (*bufio.Reader, error) {
-	ctx := *ctxP
-	c := ctx.c
-	s.releaseCtx(ctx)
-
-	// Make GC happy, so it could collect ctx
-	// while we are waiting for the next request.
-	ctx = nil
-	*ctxP = nil
-
-	var b [1]byte
-	n, err := c.Read(b[:])
-
-	ctx = s.acquireCtx(c)
-	*ctxP = ctx
-	if err != nil {
-		// Treat all errors as EOF on unsuccessful read
-		// of the first request byte.
-		return nil, io.EOF
-	}
-	if n != 1 {
-		panic("BUG: Reader must return at least one byte")
-	}
-
-	ctx.fbr.c = c
-	ctx.fbr.ch = b[0]
-	ctx.fbr.byteRead = false
-	r := s.acquireReader(ctx)
-	r.Reset(&ctx.fbr)
-	return r, nil
-}
 
 func (s *Server) acquireReader(ctx *Ctx) *bufio.Reader {
 	v := s.readerPool.Get()
@@ -783,13 +723,6 @@ func (c *Ctx) Err() error {
 	}
 }
 
-func (s *Server) releaseCtx(ctx *Ctx) {
-	ctx.c = nil
-	ctx.remoteAddr = nil
-	ctx.fbr.c = nil
-	s.ctxPool.Put(ctx)
-}
-
 func (s *Server) getServerName() []byte {
 	v := s.serverName.Load()
 	var serverName []byte
@@ -839,7 +772,7 @@ func defaultErrorHandler(ctx *Ctx, err error) {
 	}
 }
 
-func (s *Server) writeErrorResponse(bw *bufio.Writer, ctx *Ctx, serverName []byte, err error) *bufio.Writer {
+func (s *Server) writeErrorResponse(bw *bufio.Writer, ctx *Ctx, serverName []byte, err error) {
 	errorHandler := defaultErrorHandler
 	if s.ErrorHandler != nil {
 		errorHandler = s.ErrorHandler
@@ -851,12 +784,8 @@ func (s *Server) writeErrorResponse(bw *bufio.Writer, ctx *Ctx, serverName []byt
 		ctx.Response.Header.SetServerBytes(serverName)
 	}
 	ctx.SetConnectionClose()
-	if bw == nil {
-		bw = s.acquireWriter(ctx)
-	}
-	writeResponse(ctx, bw) //nolint:errcheck
-	bw.Flush()
-	return bw
+	_ = writeResponse(ctx, bw) //nolint:errcheck
+	_ = bw.Flush()
 }
 
 // A ConnState represents the state of a client connection to a server.

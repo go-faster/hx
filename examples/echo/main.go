@@ -9,7 +9,7 @@ import (
 
 func main() {
 	s := &hx.Server{
-		Workers: 50,
+		Workers: 500,
 		Handler: func(ctx *hx.Ctx) {
 			ctx.Response.AppendBodyString("Hello, world")
 		},

@@ -19,3 +19,22 @@ Fully buffers requests and responses.
 * HTTP 2.0, 3.0, QUIC
 * TLS
 * Running without reverse proxy
+* Optimizations for idle connections
+
+
+## Benchmarks
+
+Due to different tradeoffs, direct comparison with `net/http` and `fasthttp` is invalid.
+
+Preliminary results on Ryzen 5950x
+```
+wrk -c 200 -t 12 http://localhost:8080
+Running 10s test @ http://localhost:8080
+  12 threads and 200 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   208.27us    1.86ms  66.27ms   98.56%
+    Req/Sec   135.88k     8.35k  175.85k    87.14%
+  16293688 requests in 10.10s, 2.23GB read
+Requests/sec: 1613299.37
+Transfer/sec:    226.17MB
+```

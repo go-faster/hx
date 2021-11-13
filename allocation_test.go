@@ -4,14 +4,13 @@
 package hx
 
 import (
+	"bufio"
 	"testing"
 )
 
 func TestAllocationServeConn(t *testing.T) {
-	t.Skip("TODO")
-
 	s := &Server{
-		Handler: func(ctx *Ctx) {},
+		Handler: Nop,
 	}
 
 	rw := &readWriter{}
@@ -20,9 +19,13 @@ func TestAllocationServeConn(t *testing.T) {
 	rw.r.Grow(1024)
 	rw.w.Grow(1024)
 
+	ctx := &Ctx{c: rw}
+	w := bufio.NewWriter(rw)
+	r := bufio.NewReader(rw)
+
 	n := testing.AllocsPerRun(100, func() {
 		rw.r.WriteString("GET / HTTP/1.1\r\nHost: google.com\r\nCookie: foo=bar\r\n\r\n")
-		if err := s.ServeConn(rw); err != nil {
+		if err := s.serveConn(ctx, r, w); err != nil {
 			t.Fatal(err)
 		}
 
@@ -38,9 +41,12 @@ func TestAllocationServeConn(t *testing.T) {
 func BenchmarkServeConn(b *testing.B) {
 	const req = "GET / HTTP/1.1\r\nHost: google.com\r\nCookie: foo=bar\r\n\r\n"
 
-	s := &Server{}
+	s := &Server{Handler: Nop}
 
 	rw := &readWriter{}
+	ctx := &Ctx{c: rw}
+	w := bufio.NewWriter(rw)
+	r := bufio.NewReader(rw)
 	// Make space for the request and response here so it
 	// doesn't allocate within the test.
 	rw.r.Grow(1024)
@@ -51,7 +57,7 @@ func BenchmarkServeConn(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		rw.w.Reset()
 		rw.r.WriteString(req)
-		if err := s.ServeConn(rw); err != nil {
+		if err := s.serveConn(ctx, r, w); err != nil {
 			b.Fatal(err)
 		}
 	}

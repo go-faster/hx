@@ -63,9 +63,9 @@ func (c *Ctx) Conn() net.Conn {
 }
 
 type firstByteReader struct {
-	c        net.Conn
-	ch       byte
-	byteRead bool
+	c    net.Conn
+	byte []byte
+	read bool
 }
 
 func (r *firstByteReader) Read(b []byte) (int, error) {
@@ -73,10 +73,10 @@ func (r *firstByteReader) Read(b []byte) (int, error) {
 		return 0, nil
 	}
 	nn := 0
-	if !r.byteRead {
-		b[0] = r.ch
+	if !r.read {
+		b[0] = r.byte[0]
 		b = b[1:]
-		r.byteRead = true
+		r.read = true
 		nn = 1
 	}
 	n, err := r.c.Read(b)
