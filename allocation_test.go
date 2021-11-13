@@ -38,9 +38,7 @@ func TestAllocationServeConn(t *testing.T) {
 func BenchmarkServeConn(b *testing.B) {
 	const req = "GET / HTTP/1.1\r\nHost: google.com\r\nCookie: foo=bar\r\n\r\n"
 
-	s := &Server{
-		Handler: func(ctx *Ctx) {},
-	}
+	s := &Server{}
 
 	rw := &readWriter{}
 	// Make space for the request and response here so it

@@ -26,6 +26,9 @@ type Handler func(ctx *Ctx)
 // ServeHandler must process tls.Config.NextProto negotiated requests.
 type ServeHandler func(c net.Conn) error
 
+// Nop is handler that does nothing.
+func Nop(_ *Ctx) {}
+
 // Server implements HTTP server.
 //
 // Default Server settings should satisfy the majority of Server users.
@@ -36,7 +39,7 @@ type ServeHandler func(c net.Conn) error
 //
 // It is safe to call Server methods from concurrently running goroutines.
 type Server struct {
-	noCopy noCopy //nolint:unused,structcheck
+	noCopy noCopy // nolint:unused,structcheck
 
 	// Handler for processing incoming requests.
 	//
@@ -54,22 +57,6 @@ type Server struct {
 	//   * ErrBodyTooLarge
 	//   * ErrBrokenChunks
 	ErrorHandler func(ctx *Ctx, err error)
-
-	// HeaderReceived is called after receiving the header
-	//
-	// non zero RequestConfig field values will overwrite the default configs
-	HeaderReceived func(header *RequestHeader) RequestConfig
-
-	// ContinueHandler is called after receiving the Expect 100 Continue Header
-	//
-	// https://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html#sec8.2.3
-	// https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.1.1
-	// Using ContinueHandler a server can make decisioning on whether or not
-	// to read a potentially large request body based on the headers
-	//
-	// The default is to automatically read request bodies of Expect 100 Continue requests
-	// like they are normal requests
-	ContinueHandler func(header *RequestHeader) bool
 
 	// Server name for sending in response headers.
 	//
@@ -123,37 +110,12 @@ type Server struct {
 	// TCP keep-alive period is determined by operation system by default.
 	TCPKeepalivePeriod time.Duration
 
-	// Maximum request body size.
-	//
-	// The server rejects requests with bodies exceeding this limit.
-	//
-	// Request body size is limited by DefaultMaxRequestBodySize by default.
-	MaxRequestBodySize int
-
 	// Whether to enable tcp keep-alive connections.
 	//
 	// Whether the operating system should send tcp keep-alive messages on the tcp connection.
 	//
 	// By default tcp keep-alive connections are disabled.
 	TCPKeepalive bool
-
-	// Logs all errors, including the most frequent
-	// 'connection reset by peer', 'broken pipe' and 'connection timeout'
-	// errors. Such errors are common in production serving real-world
-	// clients.
-	//
-	// By default the most frequent errors such as
-	// 'connection reset by peer', 'broken pipe' and 'connection timeout'
-	// are suppressed in order to limit output log traffic.
-	LogAllErrors bool
-
-	// Will not log potentially sensitive content in error logs
-	//
-	// This option is useful for servers that handle sensitive data
-	// in the request/response.
-	//
-	// Server logs all full errors by default.
-	SecureErrorLogMessage bool
 
 	// Header names are passed as-is without normalization
 	// if this option is set.
@@ -172,11 +134,6 @@ type Server struct {
 	//     * content-type -> Content-Type
 	//     * cONTENT-lenGTH -> Content-Length
 	DisableHeaderNamesNormalizing bool
-
-	// SleepWhenConcurrencyLimitsExceeded is a duration to be slept of if
-	// the concurrency limit in exceeded (default [when is 0]: don't sleep
-	// and accept new connections immediately).
-	SleepWhenConcurrencyLimitsExceeded time.Duration
 
 	// NoDefaultServerHeader, when set to true, causes the default Server header
 	// to be excluded from the Response.
@@ -241,497 +198,6 @@ type RequestConfig struct {
 	WriteTimeout time.Duration
 }
 
-// Ctx contains incoming request and manages outgoing response.
-//
-// It is forbidden to copy Ctx instances.
-//
-// Handler should avoid holding references to incoming Ctx and/or
-// its' members after the return.
-// If holding Ctx references after the return is unavoidable
-// (for instance, ctx is passed to a separate goroutine and ctx lifetime cannot
-// be controlled), then the Handler MUST call ctx.TimeoutError()
-// before return.
-//
-// It is unsafe modifying/reading Ctx instance from concurrently
-// running goroutines. The only exception is TimeoutError*, which may be called
-// while other goroutines accessing Ctx.
-type Ctx struct {
-	noCopy noCopy //nolint:unused,structcheck
-
-	// Incoming request.
-	//
-	// Copying Request by value is forbidden. Use pointer to Request instead.
-	Request Request
-
-	// Outgoing response.
-	//
-	// Copying Response by value is forbidden. Use pointer to Response instead.
-	Response Response
-
-	connID         uint64
-	connRequestNum uint64
-	connTime       time.Time
-	remoteAddr     net.Addr
-
-	time time.Time
-
-	lg   *zap.Logger
-	done <-chan struct{}
-	c    net.Conn
-	fbr  firstByteReader
-}
-
-// Value is no-op implementation for context.Context.
-func (c *Ctx) Value(key interface{}) interface{} {
-	return nil
-}
-
-// Conn returns a reference to the underlying net.Conn.
-//
-// WARNING: Only use this method if you know what you are doing!
-//
-// Reading from or writing to the returned connection will end badly!
-func (c *Ctx) Conn() net.Conn {
-	return c.c
-}
-
-type firstByteReader struct {
-	c        net.Conn
-	ch       byte
-	byteRead bool
-}
-
-func (r *firstByteReader) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-	nn := 0
-	if !r.byteRead {
-		b[0] = r.ch
-		b = b[1:]
-		r.byteRead = true
-		nn = 1
-	}
-	n, err := r.c.Read(b)
-	return n + nn, err
-}
-
-var zeroTCPAddr = &net.TCPAddr{
-	IP: net.IPv4zero,
-}
-
-// String returns unique string representation of the ctx.
-//
-// The returned value may be useful for logging.
-func (c *Ctx) String() string {
-	return fmt.Sprintf("#%016X - %s<->%s - %s %s", c.ID(), c.LocalAddr(), c.RemoteAddr(), c.Request.Header.Method(), c.URI().FullURI())
-}
-
-// ID returns unique ID of the request.
-func (c *Ctx) ID() uint64 {
-	return (c.connID << 32) | c.connRequestNum
-}
-
-// ConnID returns unique connection ID.
-//
-// This ID may be used to match distinct requests to the same incoming
-// connection.
-func (c *Ctx) ConnID() uint64 {
-	return c.connID
-}
-
-// Time returns Handler call time.
-func (c *Ctx) Time() time.Time {
-	return c.time
-}
-
-// ConnTime returns the time the server started serving the connection
-// the current request came from.
-func (c *Ctx) ConnTime() time.Time {
-	return c.connTime
-}
-
-// ConnRequestNum returns request sequence number
-// for the current connection.
-//
-// Sequence starts with 1.
-func (c *Ctx) ConnRequestNum() uint64 {
-	return c.connRequestNum
-}
-
-// SetConnectionClose sets 'Connection: close' response header and closes
-// connection after the Handler returns.
-func (c *Ctx) SetConnectionClose() {
-	c.Response.SetConnectionClose()
-}
-
-// SetStatusCode sets response status code.
-func (c *Ctx) SetStatusCode(statusCode int) {
-	c.Response.SetStatusCode(statusCode)
-}
-
-// SetContentType sets response Content-Type.
-func (c *Ctx) SetContentType(contentType string) {
-	c.Response.Header.SetContentType(contentType)
-}
-
-// SetContentTypeBytes sets response Content-Type.
-//
-// It is safe modifying contentType buffer after function return.
-func (c *Ctx) SetContentTypeBytes(contentType []byte) {
-	c.Response.Header.SetContentTypeBytes(contentType)
-}
-
-// RequestURI returns RequestURI.
-//
-// The returned bytes are valid until your request handler returns.
-func (c *Ctx) RequestURI() []byte {
-	return c.Request.Header.RequestURI()
-}
-
-// URI returns requested uri.
-//
-// This uri is valid until your request handler returns.
-func (c *Ctx) URI() *URI {
-	return c.Request.URI()
-}
-
-// Referer returns request referer.
-//
-// The returned bytes are valid until your request handler returns.
-func (c *Ctx) Referer() []byte {
-	return c.Request.Header.Referer()
-}
-
-// UserAgent returns User-Agent header value from the request.
-//
-// The returned bytes are valid until your request handler returns.
-func (c *Ctx) UserAgent() []byte {
-	return c.Request.Header.UserAgent()
-}
-
-// Path returns requested path.
-//
-// The returned bytes are valid until your request handler returns.
-func (c *Ctx) Path() []byte {
-	return c.URI().Path()
-}
-
-// Host returns requested host.
-//
-// The returned bytes are valid until your request handler returns.
-func (c *Ctx) Host() []byte {
-	return c.URI().Host()
-}
-
-// QueryArgs returns query arguments from RequestURI.
-//
-// It doesn't return POST'ed arguments - use PostArgs() for this.
-//
-// See also PostArgs, FormValue and FormFile.
-//
-// These args are valid until your request handler returns.
-func (c *Ctx) QueryArgs() *Args {
-	return c.URI().QueryArgs()
-}
-
-// PostArgs returns POST arguments.
-//
-// It doesn't return query arguments from RequestURI - use QueryArgs for this.
-//
-// See also QueryArgs, FormValue and FormFile.
-//
-// These args are valid until your request handler returns.
-func (c *Ctx) PostArgs() *Args {
-	return c.Request.PostArgs()
-}
-
-// IsGet returns true if request method is GET.
-func (c *Ctx) IsGet() bool {
-	return c.Request.Header.IsGet()
-}
-
-// IsPost returns true if request method is POST.
-func (c *Ctx) IsPost() bool {
-	return c.Request.Header.IsPost()
-}
-
-// IsPut returns true if request method is PUT.
-func (c *Ctx) IsPut() bool {
-	return c.Request.Header.IsPut()
-}
-
-// IsDelete returns true if request method is DELETE.
-func (c *Ctx) IsDelete() bool {
-	return c.Request.Header.IsDelete()
-}
-
-// IsConnect returns true if request method is CONNECT.
-func (c *Ctx) IsConnect() bool {
-	return c.Request.Header.IsConnect()
-}
-
-// IsOptions returns true if request method is OPTIONS.
-func (c *Ctx) IsOptions() bool {
-	return c.Request.Header.IsOptions()
-}
-
-// IsTrace returns true if request method is TRACE.
-func (c *Ctx) IsTrace() bool {
-	return c.Request.Header.IsTrace()
-}
-
-// IsPatch returns true if request method is PATCH.
-func (c *Ctx) IsPatch() bool {
-	return c.Request.Header.IsPatch()
-}
-
-// Method return request method.
-//
-// Returned value is valid until your request handler returns.
-func (c *Ctx) Method() []byte {
-	return c.Request.Header.Method()
-}
-
-// IsHead returns true if request method is HEAD.
-func (c *Ctx) IsHead() bool {
-	return c.Request.Header.IsHead()
-}
-
-// RemoteAddr returns client address for the given request.
-//
-// Always returns non-nil result.
-func (c *Ctx) RemoteAddr() net.Addr {
-	if c.remoteAddr != nil {
-		return c.remoteAddr
-	}
-	if c.c == nil {
-		return zeroTCPAddr
-	}
-	addr := c.c.RemoteAddr()
-	if addr == nil {
-		return zeroTCPAddr
-	}
-	return addr
-}
-
-// SetRemoteAddr sets remote address to the given value.
-//
-// Set nil value to resore default behaviour for using
-// connection remote address.
-func (c *Ctx) SetRemoteAddr(remoteAddr net.Addr) {
-	c.remoteAddr = remoteAddr
-}
-
-// LocalAddr returns server address for the given request.
-//
-// Always returns non-nil result.
-func (c *Ctx) LocalAddr() net.Addr {
-	if c.c == nil {
-		return zeroTCPAddr
-	}
-	addr := c.c.LocalAddr()
-	if addr == nil {
-		return zeroTCPAddr
-	}
-	return addr
-}
-
-// RemoteIP returns the client ip the request came from.
-//
-// Always returns non-nil result.
-func (c *Ctx) RemoteIP() net.IP {
-	return addrToIP(c.RemoteAddr())
-}
-
-// LocalIP returns the server ip the request came to.
-//
-// Always returns non-nil result.
-func (c *Ctx) LocalIP() net.IP {
-	return addrToIP(c.LocalAddr())
-}
-
-func addrToIP(addr net.Addr) net.IP {
-	x, ok := addr.(*net.TCPAddr)
-	if !ok {
-		return net.IPv4zero
-	}
-	return x.IP
-}
-
-// Error sets response status code to the given value and sets response body
-// to the given message.
-//
-// Warning: this will reset the response headers and body already set!
-func (c *Ctx) Error(msg string, statusCode int) {
-	c.Response.Reset()
-	c.SetStatusCode(statusCode)
-	c.SetContentTypeBytes(defaultContentType)
-	c.SetBodyString(msg)
-}
-
-// Success sets response Content-Type and body to the given values.
-func (c *Ctx) Success(contentType string, body []byte) {
-	c.SetContentType(contentType)
-	c.SetBody(body)
-}
-
-// SuccessString sets response Content-Type and body to the given values.
-func (c *Ctx) SuccessString(contentType, body string) {
-	c.SetContentType(contentType)
-	c.SetBodyString(body)
-}
-
-// Redirect sets 'Location: uri' response header and sets the given statusCode.
-//
-// statusCode must have one of the following values:
-//
-//    * StatusMovedPermanently (301)
-//    * StatusFound (302)
-//    * StatusSeeOther (303)
-//    * StatusTemporaryRedirect (307)
-//    * StatusPermanentRedirect (308)
-//
-// All other statusCode values are replaced by StatusFound (302).
-//
-// The redirect uri may be either absolute or relative to the current
-// request uri. Fasthttp will always send an absolute uri back to the client.
-// To send a relative uri you can use the following code:
-//
-//   strLocation = []byte("Location") // Put this with your top level var () declarations.
-//   ctx.Response.Header.SetCanonical(strLocation, "/relative?uri")
-//   ctx.Response.SetStatusCode(fasthttp.StatusMovedPermanently)
-//
-func (c *Ctx) Redirect(uri string, statusCode int) {
-	u := AcquireURI()
-	c.URI().CopyTo(u)
-	u.Update(uri)
-	c.redirect(u.FullURI(), statusCode)
-	ReleaseURI(u)
-}
-
-// RedirectBytes sets 'Location: uri' response header and sets
-// the given statusCode.
-//
-// statusCode must have one of the following values:
-//
-//    * StatusMovedPermanently (301)
-//    * StatusFound (302)
-//    * StatusSeeOther (303)
-//    * StatusTemporaryRedirect (307)
-//    * StatusPermanentRedirect (308)
-//
-// All other statusCode values are replaced by StatusFound (302).
-//
-// The redirect uri may be either absolute or relative to the current
-// request uri. Fasthttp will always send an absolute uri back to the client.
-// To send a relative uri you can use the following code:
-//
-//   strLocation = []byte("Location") // Put this with your top level var () declarations.
-//   ctx.Response.Header.SetCanonical(strLocation, "/relative?uri")
-//   ctx.Response.SetStatusCode(fasthttp.StatusMovedPermanently)
-//
-func (c *Ctx) RedirectBytes(uri []byte, statusCode int) {
-	s := b2s(uri)
-	c.Redirect(s, statusCode)
-}
-
-func (c *Ctx) redirect(uri []byte, statusCode int) {
-	c.Response.Header.SetCanonical(strLocation, uri)
-	statusCode = getRedirectStatusCode(statusCode)
-	c.Response.SetStatusCode(statusCode)
-}
-
-func getRedirectStatusCode(statusCode int) int {
-	if statusCode == StatusMovedPermanently || statusCode == StatusFound ||
-		statusCode == StatusSeeOther || statusCode == StatusTemporaryRedirect ||
-		statusCode == StatusPermanentRedirect {
-		return statusCode
-	}
-	return StatusFound
-}
-
-// SetBody sets response body to the given value.
-//
-// It is safe re-using body argument after the function returns.
-func (c *Ctx) SetBody(body []byte) {
-	c.Response.SetBody(body)
-}
-
-// SetBodyString sets response body to the given value.
-func (c *Ctx) SetBodyString(body string) {
-	c.Response.SetBodyString(body)
-}
-
-// ResetBody resets response body contents.
-func (c *Ctx) ResetBody() {
-	c.Response.ResetBody()
-}
-
-// IfModifiedSince returns true if lastModified exceeds 'If-Modified-Since'
-// value from the request header.
-//
-// The function returns true also 'If-Modified-Since' request header is missing.
-func (c *Ctx) IfModifiedSince(lastModified time.Time) bool {
-	ifModStr := c.Request.Header.peek(strIfModifiedSince)
-	if len(ifModStr) == 0 {
-		return true
-	}
-	ifMod, err := ParseHTTPDate(ifModStr)
-	if err != nil {
-		return true
-	}
-	lastModified = lastModified.Truncate(time.Second)
-	return ifMod.Before(lastModified)
-}
-
-// NotModified resets response and sets '304 Not Modified' response status code.
-func (c *Ctx) NotModified() {
-	c.Response.Reset()
-	c.SetStatusCode(StatusNotModified)
-}
-
-// NotFound resets response and sets '404 Not Found' response status code.
-func (c *Ctx) NotFound() {
-	c.Response.Reset()
-	c.SetStatusCode(StatusNotFound)
-	c.SetBodyString("404 Page not found")
-}
-
-// Write writes p into response body.
-func (c *Ctx) Write(p []byte) (int, error) {
-	c.Response.AppendBody(p)
-	return len(p), nil
-}
-
-// WriteString appends s to response body.
-func (c *Ctx) WriteString(s string) (int, error) {
-	c.Response.AppendBodyString(s)
-	return len(s), nil
-}
-
-// PostBody returns POST request body.
-//
-// The returned bytes are valid until your request handler returns.
-func (c *Ctx) PostBody() []byte {
-	return c.Request.Body()
-}
-
-// Logger returns logger, which may be used for logging arbitrary
-// request-specific messages inside Handler.
-//
-// Each message logged via returned logger contains request-specific information
-// such as request id, request duration, local address, remote address,
-// request method and request url.
-//
-// It is safe re-using returned logger for logging multiple messages
-// for the current request.
-//
-// The returned logger is valid until your request handler returns.
-func (c *Ctx) Logger() *zap.Logger {
-	return c.lg
-}
-
 // tcpKeepAliveListener sets TCP keep-alive timeouts on accepted
 // connections. It's used by ListenAndServe, ListenAndServeTLS and
 // ListenAndServeTLSEmbed so dead TCP connections (e.g. closing laptop mid-download)
@@ -767,6 +233,9 @@ func (ln tcpKeepaliveListener) Accept() (net.Conn, error) {
 //
 // Accepted connections are configured to enable TCP keep-alives.
 func (s *Server) ListenAndServe(addr string) error {
+	if s.Handler == nil {
+		s.Handler = Nop
+	}
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
@@ -789,6 +258,10 @@ const DefaultWorkers = 100
 //
 // Serve blocks until the given listener returns permanent error.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	if s.Handler == nil {
+		s.Handler = Nop
+	}
+
 	workers := s.getWorkers()
 
 	s.mu.Lock()
@@ -889,6 +362,10 @@ func (s *Server) logger() *zap.Logger {
 //
 // ServeConn closes c before returning.
 func (s *Server) ServeConn(c net.Conn) error {
+	if s.Handler == nil {
+		s.Handler = Nop
+	}
+
 	atomic.AddInt32(&s.open, 1)
 
 	err := s.serveConn(c)
@@ -899,6 +376,8 @@ func (s *Server) ServeConn(c net.Conn) error {
 		err = closeErr
 	}
 
+	atomic.AddInt32(&s.open, -1)
+
 	return err
 }
 
@@ -906,14 +385,6 @@ func (s *Server) ServeConn(c net.Conn) error {
 //
 // This function is intended be used by monitoring systems
 func (s *Server) GetOpenConnectionsCount() int32 {
-	if atomic.LoadInt32(&s.stop) == 0 {
-		// Decrement by one to avoid reporting the extra open value that gets
-		// counted while the server is listening.
-		return atomic.LoadInt32(&s.open) - 1
-	}
-	// This is not perfect, because s.stop could have changed to zero
-	// before we load the value of s.open. However, in the common case
-	// this avoids underreporting open connections by 1 during server shutdown.
 	return atomic.LoadInt32(&s.open)
 }
 
@@ -942,7 +413,8 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 	if !s.NoDefaultServerHeader {
 		serverName = s.getServerName()
 	}
-	connRequestNum := uint64(0)
+
+	requests := uint64(0)
 	connID := nextConnID()
 	connTime := time.Now()
 	writeTimeout := s.WriteTimeout
@@ -957,14 +429,13 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		connectionClose bool
 		isHTTP11        bool
 
-		reqReset               bool
-		continueReadingRequest = true
+		reqReset bool
 	)
 	for {
-		connRequestNum++
+		requests++
 
 		// If this is a keep-alive connection set the idle timeout.
-		if connRequestNum > 1 {
+		if requests > 1 {
 			if d := s.idleTimeout(); d > 0 {
 				if err := c.SetReadDeadline(time.Now().Add(d)); err != nil {
 					panic(fmt.Sprintf("BUG: error in SetReadDeadline(%s): %s", d, err))
@@ -975,7 +446,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		if br != nil {
 			// If this is a keep-alive connection we want to try and read the first bytes
 			// within the idle time.
-			if connRequestNum > 1 {
+			if requests > 1 {
 				var b []byte
 				b, err = br.Peek(1)
 				if len(b) == 0 {
@@ -1000,7 +471,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 				if err := c.SetReadDeadline(time.Now().Add(s.ReadTimeout)); err != nil {
 					panic(fmt.Sprintf("BUG: error in SetReadDeadline(%s): %s", s.ReadTimeout, err))
 				}
-			} else if s.IdleTimeout > 0 && connRequestNum > 1 {
+			} else if s.IdleTimeout > 0 && requests > 1 {
 				// If this was an idle connection and the server has an IdleTimeout but
 				// no ReadTimeout then we should remove the ReadTimeout.
 				if err := c.SetReadDeadline(zeroTime); err != nil {
@@ -1033,18 +504,6 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			}
 
 			if err == nil {
-				if onHdrRecv := s.HeaderReceived; onHdrRecv != nil {
-					reqConf := onHdrRecv(&ctx.Request.Header)
-					if reqConf.ReadTimeout > 0 {
-						deadline := time.Now().Add(reqConf.ReadTimeout)
-						if err := c.SetReadDeadline(deadline); err != nil {
-							panic(fmt.Sprintf("BUG: error in SetReadDeadline(%s): %s", deadline, err))
-						}
-					}
-					if reqConf.WriteTimeout > 0 {
-						writeTimeout = reqConf.WriteTimeout
-					}
-				}
 				err = ctx.Request.readBody(br)
 			}
 
@@ -1058,7 +517,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			if err == io.EOF {
 				err = nil
 			} else if nr, ok := err.(ErrNothingRead); ok {
-				if connRequestNum > 1 {
+				if requests > 1 {
 					// This is not the first request and we haven't read a single byte
 					// of a new request yet. This means it's just a keep-alive connection
 					// closing down either because the remote closed it or because
@@ -1079,41 +538,28 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		// 'Expect: 100-continue' request handling.
 		// See https://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html#sec8.2.3 for details.
 		if ctx.Request.MayContinue() {
-			// Allow the ability to deny reading the incoming request body
-			if s.ContinueHandler != nil {
-				if continueReadingRequest = s.ContinueHandler(&ctx.Request.Header); !continueReadingRequest {
-					if br != nil {
-						br.Reset(ctx.c)
-					}
-
-					ctx.SetStatusCode(StatusExpectationFailed)
-				}
+			if bw == nil {
+				bw = s.acquireWriter(ctx)
 			}
 
-			if continueReadingRequest {
-				if bw == nil {
-					bw = s.acquireWriter(ctx)
-				}
+			// Send 'HTTP/1.1 100 Continue' response.
+			_, err = bw.Write(strResponseContinue)
+			if err != nil {
+				break
+			}
+			err = bw.Flush()
+			if err != nil {
+				break
+			}
 
-				// Send 'HTTP/1.1 100 Continue' response.
-				_, err = bw.Write(strResponseContinue)
-				if err != nil {
-					break
-				}
-				err = bw.Flush()
-				if err != nil {
-					break
-				}
+			// Read request body.
+			if br == nil {
+				br = s.acquireReader(ctx)
+			}
 
-				// Read request body.
-				if br == nil {
-					br = s.acquireReader(ctx)
-				}
-
-				if err := ctx.Request.ContinueReadBody(br); err != nil {
-					bw = s.writeErrorResponse(bw, ctx, serverName, err)
-					break
-				}
+			if err := ctx.Request.ContinueReadBody(br); err != nil {
+				bw = s.writeErrorResponse(bw, ctx, serverName, err)
+				break
 			}
 		}
 
@@ -1124,13 +570,9 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 			ctx.Response.Header.SetServerBytes(serverName)
 		}
 		ctx.connID = connID
-		ctx.connRequestNum = connRequestNum
+		ctx.connRequestNum = requests
 		ctx.time = time.Now()
-
-		// If a client denies a request the handler should not be called
-		if continueReadingRequest {
-			s.Handler(ctx)
-		}
+		s.Handler(ctx)
 		if ctx.IsHead() {
 			ctx.Response.SkipBody = true
 		}
@@ -1196,10 +638,10 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 	}
 
 	if br != nil {
-		releaseReader(s, br)
+		s.releaseReader(br)
 	}
 	if bw != nil {
-		releaseWriter(s, bw)
+		s.releaseWriter(bw)
 	}
 	if ctx != nil {
 		// in unexpected cases the for loop will break
@@ -1276,7 +718,7 @@ func (s *Server) acquireReader(ctx *Ctx) *bufio.Reader {
 	return r
 }
 
-func releaseReader(s *Server, r *bufio.Reader) {
+func (s *Server) releaseReader(r *bufio.Reader) {
 	s.readerPool.Put(r)
 }
 
@@ -1294,7 +736,7 @@ func (s *Server) acquireWriter(ctx *Ctx) *bufio.Writer {
 	return w
 }
 
-func releaseWriter(s *Server, w *bufio.Writer) {
+func (s *Server) releaseWriter(w *bufio.Writer) {
 	s.writerPool.Put(w)
 }
 
