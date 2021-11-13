@@ -390,54 +390,6 @@ func TestRequestCtxString(t *testing.T) {
 	}
 }
 
-func TestServerErrSmallBuffer(t *testing.T) {
-	t.Parallel()
-
-	s := &Server{
-		Handler: func(ctx *Ctx) {
-			ctx.WriteString("shouldn't be never called") //nolint:errcheck
-		},
-		ReadBufferSize: 20,
-	}
-
-	rw := &readWriter{}
-	rw.r.WriteString("GET / HTTP/1.1\r\nHost: aabb.com\r\nVERY-long-Header: sdfdfsd dsf dsaf dsf df fsd\r\n\r\n")
-
-	ch := make(chan error)
-	go func() {
-		ch <- s.ServeConn(rw)
-	}()
-
-	var serverErr error
-	select {
-	case serverErr = <-ch:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timeout")
-	}
-
-	if serverErr == nil {
-		t.Fatal("expected error")
-	}
-
-	br := bufio.NewReader(&rw.w)
-	var resp Response
-	if err := resp.Read(br); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	statusCode := resp.StatusCode()
-	if statusCode != StatusRequestHeaderFieldsTooLarge {
-		t.Fatalf("unexpected status code: %d. Expecting %d", statusCode, StatusRequestHeaderFieldsTooLarge)
-	}
-	if !resp.ConnectionClose() {
-		t.Fatal("missing 'Connection: close' response header")
-	}
-
-	expectedErr := errSmallBuffer.Error()
-	if !strings.Contains(serverErr.Error(), expectedErr) {
-		t.Fatalf("unexpected log output: %v. Expecting %q", serverErr, expectedErr)
-	}
-}
-
 func TestServerResponseServerHeader(t *testing.T) {
 	t.Skip("TODO")
 	t.Parallel()

@@ -72,20 +72,6 @@ type Server struct {
 	// It works with ListenAndServe as well.
 	Workers int
 
-	// Per-connection buffer size for requests' reading.
-	// This also limits the maximum header size.
-	//
-	// Increase this buffer if your clients send multi-KB RequestURIs
-	// and/or multi-KB headers (for example, BIG cookies).
-	//
-	// Default buffer size is used if not set.
-	ReadBufferSize int
-
-	// Per-connection buffer size for responses' writing.
-	//
-	// Default buffer size is used if not set.
-	WriteBufferSize int
-
 	// ReadTimeout is the amount of time allowed to read
 	// the full request including body. The connection's read
 	// deadline is reset when the connection opens, or for
@@ -541,20 +527,14 @@ func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err erro
 			// Send 'HTTP/1.1 100 Continue' response.
 			_, err = w.Write(strResponseContinue)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "write")
 			}
 			if err = w.Flush(); err != nil {
-				return err
+				return errors.Wrap(err, "flush")
 			}
-
-			// Read request body.
-			if r == nil {
-				r = s.acquireReader(ctx)
-			}
-
 			if err := ctx.Request.ContinueReadBody(r); err != nil {
 				s.writeErrorResponse(w, ctx, serverName, err)
-				return err
+				return errors.Wrap(err, "body")
 			}
 		}
 
@@ -637,60 +617,6 @@ func writeResponse(ctx *Ctx, w *bufio.Writer) error {
 	err := ctx.Response.Write(w)
 	ctx.Response.Reset()
 	return err
-}
-
-const (
-	defaultReadBufferSize  = 4096
-	defaultWriteBufferSize = 4096
-)
-
-func (s *Server) acquireReader(ctx *Ctx) *bufio.Reader {
-	v := s.readerPool.Get()
-	if v == nil {
-		n := s.ReadBufferSize
-		if n <= 0 {
-			n = defaultReadBufferSize
-		}
-		return bufio.NewReaderSize(ctx.c, n)
-	}
-	r := v.(*bufio.Reader)
-	r.Reset(ctx.c)
-	return r
-}
-
-func (s *Server) releaseReader(r *bufio.Reader) {
-	s.readerPool.Put(r)
-}
-
-func (s *Server) acquireWriter(ctx *Ctx) *bufio.Writer {
-	v := s.writerPool.Get()
-	if v == nil {
-		n := s.WriteBufferSize
-		if n <= 0 {
-			n = defaultWriteBufferSize
-		}
-		return bufio.NewWriterSize(ctx.c, n)
-	}
-	w := v.(*bufio.Writer)
-	w.Reset(ctx.c)
-	return w
-}
-
-func (s *Server) releaseWriter(w *bufio.Writer) {
-	s.writerPool.Put(w)
-}
-
-func (s *Server) acquireCtx(c net.Conn) (ctx *Ctx) {
-	v := s.ctxPool.Get()
-	if v == nil {
-		ctx = &Ctx{}
-		ctx.Request.keepBodyBuffer = true
-		ctx.Response.keepBodyBuffer = true
-	} else {
-		ctx = v.(*Ctx)
-	}
-	ctx.c = c
-	return
 }
 
 // Deadline returns the time when work done on behalf of this context
