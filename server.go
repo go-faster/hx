@@ -160,10 +160,6 @@ type Server struct {
 
 	serverName atomic.Value
 
-	ctxPool    sync.Pool
-	readerPool sync.Pool
-	writerPool sync.Pool
-
 	// listeners to close in Shutdown()
 	ln []net.Listener
 
