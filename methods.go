@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 // HTTP methods were copied from net/http.
 const (

@@ -1,4 +1,4 @@
-package fasthttputil
+package hxutil
 
 import (
 	"bytes"

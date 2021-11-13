@@ -7,14 +7,14 @@ import (
 	"bufio"
 	"bytes"
 
-	"github.com/valyala/fasthttp"
+	github.com/go-faster/hx"
 )
 
 func Fuzz(data []byte) int {
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
+	req := hx.AcquireRequest()
+	defer hx.ReleaseRequest(req)
 
-	if err := req.ReadLimitBody(bufio.NewReader(bytes.NewReader(data)), 1024*1024); err != nil {
+	if err := req.Read(bufio.NewReader(bytes.NewReader(data))); err != nil {
 		return 0
 	}
 

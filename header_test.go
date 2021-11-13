@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 import (
 	"bufio"
@@ -2533,6 +2533,7 @@ func TestRequestHeaderReadSecuredError(t *testing.T) {
 }
 
 func testResponseHeaderReadError(t *testing.T, h *ResponseHeader, headers string) {
+	t.Helper()
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
@@ -2545,6 +2546,7 @@ func testResponseHeaderReadError(t *testing.T, h *ResponseHeader, headers string
 }
 
 func testResponseHeaderReadSecuredError(t *testing.T, h *ResponseHeader, headers string) {
+	t.Helper()
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
@@ -2560,6 +2562,7 @@ func testResponseHeaderReadSecuredError(t *testing.T, h *ResponseHeader, headers
 }
 
 func testRequestHeaderReadError(t *testing.T, h *RequestHeader, headers string) {
+	t.Helper()
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
@@ -2573,6 +2576,7 @@ func testRequestHeaderReadError(t *testing.T, h *RequestHeader, headers string) 
 }
 
 func testRequestHeaderReadSecuredError(t *testing.T, h *RequestHeader, headers string) {
+	t.Helper()
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
@@ -2589,6 +2593,7 @@ func testRequestHeaderReadSecuredError(t *testing.T, h *RequestHeader, headers s
 
 func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers string, expectedStatusCode, expectedContentLength int,
 	expectedContentType, expectedTrailer string) {
+	t.Helper()
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
@@ -2601,6 +2606,7 @@ func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers stri
 
 func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string, expectedContentLength int,
 	expectedRequestURI, expectedHost, expectedReferer, expectedContentType, expectedTrailer string) {
+	t.Helper()
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
@@ -2612,6 +2618,7 @@ func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string
 }
 
 func verifyResponseHeader(t *testing.T, h *ResponseHeader, expectedStatusCode, expectedContentLength int, expectedContentType string) {
+	t.Helper()
 	if h.StatusCode() != expectedStatusCode {
 		t.Fatalf("Unexpected status code %d. Expected %d", h.StatusCode(), expectedStatusCode)
 	}
@@ -2649,6 +2656,7 @@ func verifyRequestHeader(t *testing.T, h *RequestHeader, expectedContentLength i
 }
 
 func verifyTrailer(t *testing.T, r *bufio.Reader, expectedTrailer string) {
+	t.Helper()
 	trailer, err := ioutil.ReadAll(r)
 	if err != nil {
 		t.Fatalf("Cannot read trailer: %s", err)

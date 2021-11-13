@@ -5,28 +5,24 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/valyala/fasthttp"
+	github.com/go-faster/hx"
 )
 
 var (
-	addr     = flag.String("addr", ":8080", "TCP address to listen to")
-	compress = flag.Bool("compress", false, "Whether to enable transparent response compression")
+	addr = flag.String("addr", ":8080", "TCP address to listen to")
 )
 
 func main() {
 	flag.Parse()
 
 	h := requestHandler
-	if *compress {
-		h = fasthttp.CompressHandler(h)
-	}
 
-	if err := fasthttp.ListenAndServe(*addr, h); err != nil {
+	if err := hx.ListenAndServe(*addr, h); err != nil {
 		log.Fatalf("Error in ListenAndServe: %s", err)
 	}
 }
 
-func requestHandler(ctx *fasthttp.RequestCtx) {
+func requestHandler(ctx *hx.Ctx) {
 	fmt.Fprintf(ctx, "Hello, world!\n\n")
 
 	fmt.Fprintf(ctx, "Request method is %q\n", ctx.Method())
@@ -48,7 +44,7 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("X-My-Header", "my-header-value")
 
 	// Set cookies
-	var c fasthttp.Cookie
+	var c hx.Cookie
 	c.SetKey("cookie-name")
 	c.SetValue("cookie-value")
 	ctx.Response.Header.SetCookie(&c)

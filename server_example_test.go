@@ -1,4 +1,4 @@
-package fasthttp_test
+package hx_test
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/valyala/fasthttp"
+	"github.com/go-faster/hx"
 )
 
 func ExampleListenAndServe() {
@@ -16,9 +16,9 @@ func ExampleListenAndServe() {
 
 	// This function will be called by the server for each incoming request.
 	//
-	// RequestCtx provides a lot of functionality related to http request
-	// processing. See RequestCtx docs for details.
-	requestHandler := func(ctx *fasthttp.RequestCtx) {
+	// Ctx provides a lot of functionality related to http request
+	// processing. See Ctx docs for details.
+	requestHandler := func(ctx *hx.Ctx) {
 		fmt.Fprintf(ctx, "Hello, world! Requested path is %q", ctx.Path())
 	}
 
@@ -26,7 +26,7 @@ func ExampleListenAndServe() {
 	// Create Server instance for adjusting server settings.
 	//
 	// ListenAndServe returns only on error, so usually it blocks forever.
-	if err := fasthttp.ListenAndServe(listenAddr, requestHandler); err != nil {
+	if err := hx.ListenAndServe(listenAddr, requestHandler); err != nil {
 		log.Fatalf("error in ListenAndServe: %s", err)
 	}
 }
@@ -44,9 +44,9 @@ func ExampleServe() {
 
 	// This function will be called by the server for each incoming request.
 	//
-	// RequestCtx provides a lot of functionality related to http request
-	// processing. See RequestCtx docs for details.
-	requestHandler := func(ctx *fasthttp.RequestCtx) {
+	// Ctx provides a lot of functionality related to http request
+	// processing. See Ctx docs for details.
+	requestHandler := func(ctx *hx.Ctx) {
 		fmt.Fprintf(ctx, "Hello, world! Requested path is %q", ctx.Path())
 	}
 
@@ -54,7 +54,7 @@ func ExampleServe() {
 	// Create Server instance for adjusting server settings.
 	//
 	// Serve returns on ln.Close() or error, so usually it blocks forever.
-	if err := fasthttp.Serve(ln, requestHandler); err != nil {
+	if err := hx.Serve(ln, requestHandler); err != nil {
 		log.Fatalf("error in Serve: %s", err)
 	}
 }
@@ -62,14 +62,14 @@ func ExampleServe() {
 func ExampleServer() {
 	// This function will be called by the server for each incoming request.
 	//
-	// RequestCtx provides a lot of functionality related to http request
-	// processing. See RequestCtx docs for details.
-	requestHandler := func(ctx *fasthttp.RequestCtx) {
+	// Ctx provides a lot of functionality related to http request
+	// processing. See Ctx docs for details.
+	requestHandler := func(ctx *hx.Ctx) {
 		fmt.Fprintf(ctx, "Hello, world! Requested path is %q", ctx.Path())
 	}
 
 	// Create custom server.
-	s := &fasthttp.Server{
+	s := &hx.Server{
 		Handler: requestHandler,
 
 		// Every response will contain 'Server: My super server' header.
@@ -86,46 +86,8 @@ func ExampleServer() {
 	}
 }
 
-func ExampleRequestCtx_Hijack() {
-	// hijackHandler is called on hijacked connection.
-	hijackHandler := func(c net.Conn) {
-		fmt.Fprintf(c, "This message is sent over a hijacked connection to the client %s\n", c.RemoteAddr())
-		fmt.Fprintf(c, "Send me something and I'll echo it to you\n")
-		var buf [1]byte
-		for {
-			if _, err := c.Read(buf[:]); err != nil {
-				log.Printf("error when reading from hijacked connection: %s", err)
-				return
-			}
-			fmt.Fprintf(c, "You sent me %q. Waiting for new data\n", buf[:])
-		}
-	}
-
-	// requestHandler is called for each incoming request.
-	requestHandler := func(ctx *fasthttp.RequestCtx) {
-		path := ctx.Path()
-		switch {
-		case string(path) == "/hijack":
-			// Note that the connection is hijacked only after
-			// returning from requestHandler and sending http response.
-			ctx.Hijack(hijackHandler)
-
-			// The connection will be hijacked after sending this response.
-			fmt.Fprintf(ctx, "Hijacked the connection!")
-		case string(path) == "/":
-			fmt.Fprintf(ctx, "Root directory requested")
-		default:
-			fmt.Fprintf(ctx, "Requested path is %q", path)
-		}
-	}
-
-	if err := fasthttp.ListenAndServe(":80", requestHandler); err != nil {
-		log.Fatalf("error in ListenAndServe: %s", err)
-	}
-}
-
 func ExampleRequestCtx_TimeoutError() {
-	requestHandler := func(ctx *fasthttp.RequestCtx) {
+	requestHandler := func(ctx *hx.Ctx) {
 		// Emulate long-running task, which touches ctx.
 		doneCh := make(chan struct{})
 		go func() {
@@ -150,16 +112,16 @@ func ExampleRequestCtx_TimeoutError() {
 		}
 	}
 
-	if err := fasthttp.ListenAndServe(":80", requestHandler); err != nil {
+	if err := hx.ListenAndServe(":80", requestHandler); err != nil {
 		log.Fatalf("error in ListenAndServe: %s", err)
 	}
 }
 
 func ExampleRequestCtx_Logger() {
-	requestHandler := func(ctx *fasthttp.RequestCtx) {
+	requestHandler := func(ctx *hx.Ctx) {
 		if string(ctx.Path()) == "/top-secret" {
 			ctx.Logger().Printf("Alarm! Alien intrusion detected!")
-			ctx.Error("Access denied!", fasthttp.StatusForbidden)
+			ctx.Error("Access denied!", hx.StatusForbidden)
 			return
 		}
 
@@ -171,7 +133,7 @@ func ExampleRequestCtx_Logger() {
 		logger.Printf("Multiple log messages may be written during a single request")
 	}
 
-	if err := fasthttp.ListenAndServe(":80", requestHandler); err != nil {
+	if err := hx.ListenAndServe(":80", requestHandler); err != nil {
 		log.Fatalf("error in ListenAndServe: %s", err)
 	}
 }

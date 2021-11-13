@@ -6,7 +6,7 @@ Fasthttp provides the following features:
     * Optimized for speed. Easily handles more than 100K qps and more than 1M
       concurrent keep-alive connections on modern hardware.
     * Optimized for low memory usage.
-    * Easy 'Connection: Upgrade' support via RequestCtx.Hijack.
+    * Easy 'Connection: Upgrade' support via Ctx.Hijack.
     * Server provides the following anti-DoS limits:
 
         * The number of concurrent connections.
@@ -34,4 +34,4 @@ Fasthttp provides the following features:
       and server implementations or to write custom client and server
       implementations from scratch.
 */
-package fasthttp
+package hx

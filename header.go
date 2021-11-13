@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 import (
 	"bufio"
@@ -1462,6 +1462,8 @@ func (h *ResponseHeader) Read(r *bufio.Reader) error {
 	}
 }
 
+var ErrTimeout = errors.New("timeout")
+
 func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 	h.resetSkipNormalize()
 	b, err := r.Peek(n)
@@ -1474,19 +1476,6 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 		if n == 1 || err == io.EOF {
 			return io.EOF
 		}
-
-		// This is for go 1.6 bug. See https://github.com/golang/go/issues/14121 .
-		if err == bufio.ErrBufferFull {
-			if h.secureErrorLogMessage {
-				return &ErrSmallBuffer{
-					error: fmt.Errorf("error when reading response headers"),
-				}
-			}
-			return &ErrSmallBuffer{
-				error: fmt.Errorf("error when reading response headers: %s", errSmallBuffer),
-			}
-		}
-
 		return fmt.Errorf("error when reading response headers: %s", err)
 	}
 	b = mustPeekBuffered(r)
@@ -1688,7 +1677,7 @@ func (h *ResponseHeader) AppendBytes(dst []byte) []byte {
 
 	// Append Content-Type only for non-zero responses
 	// or if it is explicitly set.
-	// See https://github.com/valyala/fasthttp/issues/28 .
+	// See https://github.com/go-faster/hx/issues/28 .
 	if h.ContentLength() != 0 || len(h.contentType) > 0 {
 		contentType := h.ContentType()
 		if len(contentType) > 0 {

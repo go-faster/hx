@@ -6,12 +6,12 @@ package fuzz
 import (
 	"bytes"
 
-	"github.com/valyala/fasthttp"
+	github.com/go-faster/hx"
 )
 
 func Fuzz(data []byte) int {
-	c := fasthttp.AcquireCookie()
-	defer fasthttp.ReleaseCookie(c)
+	c := hx.AcquireCookie()
+	defer hx.ReleaseCookie(c)
 
 	if err := c.ParseBytes(data); err != nil {
 		return 0

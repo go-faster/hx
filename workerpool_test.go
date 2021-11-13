@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 import (
 	"io/ioutil"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/valyala/fasthttp/fasthttputil"
+	"github.com/go-faster/hx/hxutil"
 )
 
 func TestWorkerPoolStartStopSerial(t *testing.T) {
@@ -106,7 +106,7 @@ func testWorkerPoolMaxWorkersCount(t *testing.T) {
 	}
 	wp.Start()
 
-	ln := fasthttputil.NewInmemoryListener()
+	ln := hxutil.NewInmemoryListener()
 
 	clientCh := make(chan struct{}, wp.MaxWorkersCount)
 	for i := 0; i < wp.MaxWorkersCount; i++ {

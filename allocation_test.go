@@ -1,17 +1,15 @@
 //go:build !race
 // +build !race
 
-package fasthttp
+package hx
 
 import (
-	"net"
-
 	"testing"
 )
 
 func TestAllocationServeConn(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *RequestCtx) {
+		Handler: func(ctx *Ctx) {
 		},
 	}
 
@@ -29,40 +27,6 @@ func TestAllocationServeConn(t *testing.T) {
 
 		// Reset the write buffer to make space for the next response.
 		rw.w.Reset()
-	})
-
-	if n != 0 {
-		t.Fatalf("expected 0 allocations, got %f", n)
-	}
-}
-
-func TestAllocationClient(t *testing.T) {
-	ln, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("cannot listen: %s", err)
-	}
-	defer ln.Close()
-
-	s := &Server{
-		Handler: func(ctx *RequestCtx) {
-		},
-	}
-	go s.Serve(ln) //nolint:errcheck
-
-	c := &Client{}
-	url := "http://test:test@" + ln.Addr().String() + "/foo?bar=baz"
-
-	n := testing.AllocsPerRun(100, func() {
-		req := AcquireRequest()
-		res := AcquireResponse()
-
-		req.SetRequestURI(url)
-		if err := c.Do(req, res); err != nil {
-			t.Fatal(err)
-		}
-
-		ReleaseRequest(req)
-		ReleaseResponse(res)
 	})
 
 	if n != 0 {

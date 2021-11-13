@@ -6,12 +6,12 @@ package fuzz
 import (
 	"bytes"
 
-	"github.com/valyala/fasthttp"
+	github.com/go-faster/hx"
 )
 
 func Fuzz(data []byte) int {
-	u := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(u)
+	u := hx.AcquireURI()
+	defer hx.ReleaseURI(u)
 
 	u.UpdateBytes(data)
 

@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 var (
 	defaultServerName  = []byte("fasthttp")

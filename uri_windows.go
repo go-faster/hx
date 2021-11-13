@@ -1,7 +1,7 @@
 //go:build windows
 // +build windows
 
-package fasthttp
+package hx
 
 func addLeadingSlash(dst, src []byte) []byte {
 	// zero length and "C:/" case

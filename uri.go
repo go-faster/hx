@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 import (
 	"bytes"
@@ -278,10 +278,10 @@ var (
 //
 // uri may contain e.g. RequestURI without scheme and host if host is non-empty.
 func (u *URI) Parse(host, uri []byte) error {
-	return u.parse(host, uri, false)
+	return u.parse(host, uri)
 }
 
-func (u *URI) parse(host, uri []byte, isTLS bool) error {
+func (u *URI) parse(host, uri []byte) error {
 	u.Reset()
 
 	if stringContainsCTLByte(uri) {
@@ -293,10 +293,6 @@ func (u *URI) parse(host, uri []byte, isTLS bool) error {
 		u.SetSchemeBytes(scheme)
 		host = newHost
 		uri = newURI
-	}
-
-	if isTLS {
-		u.SetSchemeBytes(strHTTPS)
 	}
 
 	if n := bytes.IndexByte(host, '@'); n >= 0 {
@@ -803,12 +799,12 @@ func (u *URI) String() string {
 	return string(u.FullURI())
 }
 
-func splitHostURI(host, uri []byte) ([]byte, []byte, []byte) {
+func splitHostURI(host, uri []byte) (scheme []byte, newHost []byte, newURI []byte) {
 	n := bytes.Index(uri, strSlashSlash)
 	if n < 0 {
 		return strHTTP, host, uri
 	}
-	scheme := uri[:n]
+	scheme = uri[:n]
 	if bytes.IndexByte(scheme, '/') >= 0 {
 		return strHTTP, host, uri
 	}

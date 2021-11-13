@@ -1,5 +1,5 @@
 helloworldserver: clean
-	go get -u github.com/valyala/fasthttp
+	go get -u github.com/go-faster/hx
 	go build
 
 clean:

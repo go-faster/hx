@@ -1,4 +1,4 @@
-package fasthttp
+package hx
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ var defaultClientsCount = runtime.NumCPU()
 
 func BenchmarkRequestCtxRedirect(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
-		var ctx RequestCtx
+		var ctx Ctx
 		for pb.Next() {
 			ctx.Request.SetRequestURI("http://aaa.com/fff/ss.html?sdf")
 			ctx.Redirect("/foo/bar?baz=111", StatusFound)
@@ -122,51 +122,6 @@ func BenchmarkNetHTTPServerGet100ReqPerConn10KClients(b *testing.B) {
 	benchmarkNetHTTPServerGet(b, 10000, 100)
 }
 
-func BenchmarkServerHijack(b *testing.B) {
-	clientsCount := 1000
-	requestsPerConn := 10000
-	ch := make(chan struct{}, b.N)
-	responseBody := []byte("123")
-	s := &Server{
-		Handler: func(ctx *RequestCtx) {
-			ctx.Hijack(func(c net.Conn) {
-				// emulate server loop :)
-				err := ServeConn(c, func(ctx *RequestCtx) {
-					ctx.Success("foobar", responseBody)
-					registerServedRequest(b, ch)
-				})
-				if err != nil {
-					b.Fatalf("error when serving connection")
-				}
-			})
-			ctx.Success("foobar", responseBody)
-			registerServedRequest(b, ch)
-		},
-		Concurrency: 16 * clientsCount,
-	}
-	req := "GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n"
-	benchmarkServer(b, s, clientsCount, requestsPerConn, req)
-	verifyRequestsServed(b, ch)
-}
-
-func BenchmarkServerMaxConnsPerIP(b *testing.B) {
-	clientsCount := 1000
-	requestsPerConn := 10
-	ch := make(chan struct{}, b.N)
-	responseBody := []byte("123")
-	s := &Server{
-		Handler: func(ctx *RequestCtx) {
-			ctx.Success("foobar", responseBody)
-			registerServedRequest(b, ch)
-		},
-		MaxConnsPerIP: clientsCount * 2,
-		Concurrency:   16 * clientsCount,
-	}
-	req := "GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n"
-	benchmarkServer(b, s, clientsCount, requestsPerConn, req)
-	verifyRequestsServed(b, ch)
-}
-
 func BenchmarkServerTimeoutError(b *testing.B) {
 	clientsCount := 10
 	requestsPerConn := 1
@@ -174,7 +129,7 @@ func BenchmarkServerTimeoutError(b *testing.B) {
 	n := uint32(0)
 	responseBody := []byte("123")
 	s := &Server{
-		Handler: func(ctx *RequestCtx) {
+		Handler: func(ctx *Ctx) {
 			if atomic.AddUint32(&n, 1)&7 == 0 {
 				ctx.TimeoutError("xxx")
 				go func() {
@@ -327,7 +282,7 @@ var (
 func benchmarkServerGet(b *testing.B, clientsCount, requestsPerConn int) {
 	ch := make(chan struct{}, b.N)
 	s := &Server{
-		Handler: func(ctx *RequestCtx) {
+		Handler: func(ctx *Ctx) {
 			if !ctx.IsGet() {
 				b.Fatalf("Unexpected request method: %s", ctx.Method())
 			}
@@ -366,7 +321,7 @@ func benchmarkNetHTTPServerGet(b *testing.B, clientsCount, requestsPerConn int) 
 func benchmarkServerPost(b *testing.B, clientsCount, requestsPerConn int) {
 	ch := make(chan struct{}, b.N)
 	s := &Server{
-		Handler: func(ctx *RequestCtx) {
+		Handler: func(ctx *Ctx) {
 			if !ctx.IsPost() {
 				b.Fatalf("Unexpected request method: %s", ctx.Method())
 			}
