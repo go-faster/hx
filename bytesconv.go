@@ -20,12 +20,8 @@ import (
 
 // AppendHTMLEscape appends html-escaped s to dst and returns the extended dst.
 func AppendHTMLEscape(dst []byte, s string) []byte {
-	if strings.IndexByte(s, '<') < 0 &&
-		strings.IndexByte(s, '>') < 0 &&
-		strings.IndexByte(s, '"') < 0 &&
-		strings.IndexByte(s, '\'') < 0 {
-
-		// fast path - nothing to escape
+	if strings.IndexByte(s, '<') < 0 && strings.IndexByte(s, '>') < 0 && strings.IndexByte(s, '"') < 0 && strings.IndexByte(s, '\'') < 0 {
+		// Fast path: nothing to escape.
 		return append(dst, s...)
 	}
 

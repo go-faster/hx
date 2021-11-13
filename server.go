@@ -324,10 +324,6 @@ type Ctx struct {
 	s   *Server
 	c   net.Conn
 	fbr firstByteReader
-
-	timeoutResponse *Response
-	timeoutCh       chan struct{}
-	timeoutTimer    *time.Timer
 }
 
 // Value is no-op implementation for context.Context.
@@ -781,53 +777,6 @@ func (c *Ctx) Logger() *zap.Logger {
 	return c.lg
 }
 
-// TimeoutError sets response status code to StatusRequestTimeout and sets
-// body to the given msg.
-//
-// All response modifications after TimeoutError call are ignored.
-//
-// TimeoutError MUST be called before returning from Handler if there are
-// references to ctx and/or its members in other goroutines remain.
-//
-// Usage of this function is discouraged. Prefer eliminating ctx references
-// from pending goroutines instead of using this function.
-func (c *Ctx) TimeoutError(msg string) {
-	c.TimeoutErrorWithCode(msg, StatusRequestTimeout)
-}
-
-// TimeoutErrorWithCode sets response body to msg and response status
-// code to statusCode.
-//
-// All response modifications after TimeoutErrorWithCode call are ignored.
-//
-// TimeoutErrorWithCode MUST be called before returning from Handler
-// if there are references to ctx and/or its members in other goroutines remain.
-//
-// Usage of this function is discouraged. Prefer eliminating ctx references
-// from pending goroutines instead of using this function.
-func (c *Ctx) TimeoutErrorWithCode(msg string, statusCode int) {
-	var resp Response
-	resp.SetStatusCode(statusCode)
-	resp.SetBodyString(msg)
-	c.TimeoutErrorWithResponse(&resp)
-}
-
-// TimeoutErrorWithResponse marks the ctx as timed out and sends the given
-// response to the client.
-//
-// All ctx modifications after TimeoutErrorWithResponse call are ignored.
-//
-// TimeoutErrorWithResponse MUST be called before returning from Handler
-// if there are references to ctx and/or its members in other goroutines remain.
-//
-// Usage of this function is discouraged. Prefer eliminating ctx references
-// from pending goroutines instead of using this function.
-func (c *Ctx) TimeoutErrorWithResponse(resp *Response) {
-	respCopy := &Response{}
-	resp.CopyTo(respCopy)
-	c.timeoutResponse = respCopy
-}
-
 // tcpKeepAliveListener sets TCP keep-alive timeouts on accepted
 // connections. It's used by ListenAndServe, ListenAndServeTLS and
 // ListenAndServeTLSEmbed so dead TCP connections (e.g. closing laptop mid-download)
@@ -1050,8 +999,6 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		br *bufio.Reader
 		bw *bufio.Writer
 
-		timeoutResponse *Response
-
 		connectionClose bool
 		isHTTP11        bool
 
@@ -1229,17 +1176,10 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		if continueReadingRequest {
 			s.Handler(ctx)
 		}
-
-		timeoutResponse = ctx.timeoutResponse
-		if timeoutResponse != nil {
-			// Acquire a new ctx because the old one will still be in use by the timeout out handler.
-			ctx = s.acquireCtx(c)
-			timeoutResponse.CopyTo(&ctx.Response)
-		}
-
-		if !ctx.IsGet() && ctx.IsHead() {
+		if ctx.IsHead() {
 			ctx.Response.SkipBody = true
 		}
+
 		reqReset = true
 		ctx.Request.Reset()
 
@@ -1324,18 +1264,7 @@ func (s *Server) setState(nc net.Conn, state ConnState) {
 	}
 }
 
-// LastTimeoutErrorResponse returns the last timeout response set
-// via TimeoutError* call.
-//
-// This function is intended for custom server implementations.
-func (c *Ctx) LastTimeoutErrorResponse() *Response {
-	return c.timeoutResponse
-}
-
 func writeResponse(ctx *Ctx, w *bufio.Writer) error {
-	if ctx.timeoutResponse != nil {
-		panic("BUG: cannot write timed out response")
-	}
 	err := ctx.Response.Write(w)
 	ctx.Response.Reset()
 	return err
@@ -1463,9 +1392,6 @@ func (c *Ctx) Err() error {
 }
 
 func (s *Server) releaseCtx(ctx *Ctx) {
-	if ctx.timeoutResponse != nil {
-		panic("BUG: cannot release timed out Ctx")
-	}
 	ctx.c = nil
 	ctx.remoteAddr = nil
 	ctx.fbr.c = nil

@@ -923,7 +923,6 @@ func TestServerContinueHandler(t *testing.T) {
 	// Exepect 100 continue denied
 	rw := &readWriter{}
 	for i := 0; i < 25; i++ {
-
 		// Regular requests without Expect 100 continue header
 		rw.r.Reset()
 		rw.r.WriteString("POST /foo HTTP/1.1\r\nHost: gle.com\r\nContent-Length: 5\r\nContent-Type: a/b\r\n\r\n12345")
@@ -1030,118 +1029,6 @@ func TestServeConnNonHTTP11KeepAlive(t *testing.T) {
 
 	if requestsServed != 2 {
 		t.Fatalf("unexpected number of requests served: %d. Expecting 2", requestsServed)
-	}
-}
-
-func TestServerTimeoutErrorWithResponse(t *testing.T) {
-	t.Parallel()
-
-	s := &Server{
-		Handler: func(ctx *Ctx) {
-			go func() {
-				ctx.Success("aaa/bbb", []byte("xxxyyy"))
-			}()
-
-			var resp Response
-
-			resp.SetStatusCode(123)
-			resp.SetBodyString("foobar. Should be ignored")
-			ctx.TimeoutErrorWithResponse(&resp)
-
-			resp.SetStatusCode(456)
-			resp.ResetBody()
-			fmt.Fprintf(resp.bodyBuffer(), "path=%s", ctx.Path())
-			resp.Header.SetContentType("foo/bar")
-			ctx.TimeoutErrorWithResponse(&resp)
-		},
-	}
-
-	rw := &readWriter{}
-	rw.r.WriteString("GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /bar HTTP/1.1\r\nHost: google.com\r\n\r\n")
-
-	if err := s.ServeConn(rw); err != nil {
-		t.Fatalf("Unexpected error from serveConn: %s", err)
-	}
-
-	br := bufio.NewReader(&rw.w)
-	verifyResponse(t, br, 456, "foo/bar", "path=/foo")
-	verifyResponse(t, br, 456, "foo/bar", "path=/bar")
-
-	data, err := ioutil.ReadAll(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading remaining data: %s", err)
-	}
-	if len(data) != 0 {
-		t.Fatalf("Unexpected data read after the first response %q. Expecting %q", data, "")
-	}
-}
-
-func TestServerTimeoutErrorWithCode(t *testing.T) {
-	t.Parallel()
-
-	s := &Server{
-		Handler: func(ctx *Ctx) {
-			go func() {
-				ctx.Success("aaa/bbb", []byte("xxxyyy"))
-			}()
-			ctx.TimeoutErrorWithCode("should be ignored", 234)
-			ctx.TimeoutErrorWithCode("stolen ctx", StatusBadRequest)
-		},
-	}
-
-	rw := &readWriter{}
-	rw.r.WriteString("GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n")
-
-	if err := s.ServeConn(rw); err != nil {
-		t.Fatalf("Unexpected error from serveConn: %s", err)
-	}
-
-	br := bufio.NewReader(&rw.w)
-	verifyResponse(t, br, StatusBadRequest, string(defaultContentType), "stolen ctx")
-	verifyResponse(t, br, StatusBadRequest, string(defaultContentType), "stolen ctx")
-
-	data, err := ioutil.ReadAll(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading remaining data: %s", err)
-	}
-	if len(data) != 0 {
-		t.Fatalf("Unexpected data read after the first response %q. Expecting %q", data, "")
-	}
-}
-
-func TestServerTimeoutError(t *testing.T) {
-	t.Parallel()
-
-	s := &Server{
-		Handler: func(ctx *Ctx) {
-			go func() {
-				ctx.Success("aaa/bbb", []byte("xxxyyy"))
-			}()
-			ctx.TimeoutError("should be ignored")
-			ctx.TimeoutError("stolen ctx")
-		},
-	}
-
-	rw := &readWriter{}
-	rw.r.WriteString("GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n")
-
-	if err := s.ServeConn(rw); err != nil {
-		t.Fatalf("Unexpected error from serveConn: %s", err)
-	}
-
-	br := bufio.NewReader(&rw.w)
-	verifyResponse(t, br, StatusRequestTimeout, string(defaultContentType), "stolen ctx")
-	verifyResponse(t, br, StatusRequestTimeout, string(defaultContentType), "stolen ctx")
-
-	data, err := ioutil.ReadAll(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading remaining data: %s", err)
-	}
-	if len(data) != 0 {
-		t.Fatalf("Unexpected data read after the first response %q. Expecting %q", data, "")
 	}
 }
 

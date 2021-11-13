@@ -1362,7 +1362,6 @@ func TestRequestHeaderConnectionClose(t *testing.T) {
 	if string(h1.Peek(HeaderConnection)) != "close" {
 		t.Fatalf("unexpected connection value: %q. Expecting %q", h.Peek("Connection"), "close")
 	}
-
 }
 
 func TestRequestHeaderSetCookie(t *testing.T) {

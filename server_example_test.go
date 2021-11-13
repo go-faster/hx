@@ -3,9 +3,7 @@ package hx_test
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
-	"time"
 
 	"github.com/go-faster/hx"
 )
@@ -82,37 +80,6 @@ func ExampleServer() {
 	//
 	// ListenAndServe returns only on error, so usually it blocks forever.
 	if err := s.ListenAndServe("127.0.0.1:80"); err != nil {
-		log.Fatalf("error in ListenAndServe: %s", err)
-	}
-}
-
-func ExampleRequestCtx_TimeoutError() {
-	requestHandler := func(ctx *hx.Ctx) {
-		// Emulate long-running task, which touches ctx.
-		doneCh := make(chan struct{})
-		go func() {
-			workDuration := time.Millisecond * time.Duration(rand.Intn(2000))
-			time.Sleep(workDuration)
-
-			fmt.Fprintf(ctx, "ctx has been accessed by long-running task\n")
-			fmt.Fprintf(ctx, "The reuqestHandler may be finished by this time.\n")
-
-			close(doneCh)
-		}()
-
-		select {
-		case <-doneCh:
-			fmt.Fprintf(ctx, "The task has been finished in less than a second")
-		case <-time.After(time.Second):
-			// Since the long-running task is still running and may access ctx,
-			// we must call TimeoutError before returning from requestHandler.
-			//
-			// Otherwise the program will suffer from data races.
-			ctx.TimeoutError("Timeout!")
-		}
-	}
-
-	if err := hx.ListenAndServe(":80", requestHandler); err != nil {
 		log.Fatalf("error in ListenAndServe: %s", err)
 	}
 }

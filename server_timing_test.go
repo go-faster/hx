@@ -123,31 +123,6 @@ func BenchmarkNetHTTPServerGet100ReqPerConn10KClients(b *testing.B) {
 	benchmarkNetHTTPServerGet(b, 10000, 100)
 }
 
-func BenchmarkServerTimeoutError(b *testing.B) {
-	clientsCount := 10
-	requestsPerConn := 1
-	ch := make(chan struct{}, b.N)
-	n := uint32(0)
-	responseBody := []byte("123")
-	s := &Server{
-		Handler: func(ctx *Ctx) {
-			if atomic.AddUint32(&n, 1)&7 == 0 {
-				ctx.TimeoutError("xxx")
-				go func() {
-					ctx.Success("foobar", responseBody)
-				}()
-			} else {
-				ctx.Success("foobar", responseBody)
-			}
-			registerServedRequest(b, ch)
-		},
-		Workers: 16 * clientsCount,
-	}
-	req := "GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n"
-	benchmarkServer(b, serveCtx(context.TODO(), s), clientsCount, requestsPerConn, req)
-	verifyRequestsServed(b, ch)
-}
-
 type fakeServerConn struct {
 	net.TCPConn
 	ln            *fakeListener

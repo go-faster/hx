@@ -117,7 +117,6 @@ func TestRequestCopyTo(t *testing.T) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 	testRequestCopyTo(t, &req)
-
 }
 
 func TestResponseCopyTo(t *testing.T) {
@@ -1001,8 +1000,7 @@ func testResponseReadError(t *testing.T, resp *Response, response string) {
 		303, 5, "aaa", "HELLO", "aaa")
 }
 
-func testResponseReadSuccess(t *testing.T, resp *Response, response string, expectedStatusCode, expectedContentLength int,
-	expectedContentType, expectedBody, expectedTrailer string) {
+func testResponseReadSuccess(t *testing.T, resp *Response, response string, expectedStatusCode, expectedContentLength int, expectedContentType, expectedBody, expectedTrailer string) {
 
 	r := bytes.NewBufferString(response)
 	rb := bufio.NewReader(r)

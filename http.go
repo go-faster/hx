@@ -68,8 +68,7 @@ type Response struct {
 	// Use it for writing HEAD responses.
 	SkipBody bool
 
-	keepBodyBuffer        bool
-	secureErrorLogMessage bool
+	keepBodyBuffer bool
 
 	// Remote TCPAddr from concurrently net.Conn
 	raddr net.Addr
@@ -417,9 +416,9 @@ func (r *Request) URI() *URI {
 // Use this method if a single URI may be reused across multiple requests.
 // Otherwise, you can just use SetRequestURI() and it will be parsed as new URI.
 // The URI is copied and can be safely modified later.
-func (r *Request) SetURI(newUri *URI) {
-	if newUri != nil {
-		newUri.CopyTo(&r.uri)
+func (r *Request) SetURI(uri *URI) {
+	if uri != nil {
+		uri.CopyTo(&r.uri)
 		r.parsedURI = true
 		return
 	}
