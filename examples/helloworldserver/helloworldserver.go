@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	github.com/go-faster/hx"
+	"github.com/go-faster/hx"
 )
 
 var (

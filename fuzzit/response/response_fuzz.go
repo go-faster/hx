@@ -7,7 +7,7 @@ import (
 	"bufio"
 	"bytes"
 
-	github.com/go-faster/hx"
+	"github.com/go-faster/hx"
 )
 
 func Fuzz(data []byte) int {
