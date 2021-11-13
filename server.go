@@ -240,9 +240,9 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
-	if tcpln, ok := ln.(*net.TCPListener); ok {
+	if tcpLn, ok := ln.(*net.TCPListener); ok {
 		return s.Serve(ctx, tcpKeepaliveListener{
-			TCPListener:     tcpln,
+			TCPListener:     tcpLn,
 			keepalive:       s.TCPKeepalive,
 			keepalivePeriod: s.TCPKeepalivePeriod,
 		})
