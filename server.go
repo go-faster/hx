@@ -48,7 +48,7 @@ func Serve(ln net.Listener, handler Handler) error {
 	s := &Server{
 		Handler: handler,
 	}
-	return s.Serve(ln)
+	return s.Serve(context.TODO(), ln)
 }
 
 // ListenAndServe serves HTTP requests from the given TCP addr
@@ -868,13 +868,13 @@ func (s *Server) ListenAndServe(addr string) error {
 		return err
 	}
 	if tcpln, ok := ln.(*net.TCPListener); ok {
-		return s.Serve(tcpKeepaliveListener{
+		return s.Serve(context.TODO(), tcpKeepaliveListener{
 			TCPListener:     tcpln,
 			keepalive:       s.TCPKeepalive,
 			keepalivePeriod: s.TCPKeepalivePeriod,
 		})
 	}
-	return s.Serve(ln)
+	return s.Serve(context.TODO(), ln)
 }
 
 // DefaultWorkers is the maximum number of concurrent connections
@@ -884,7 +884,7 @@ const DefaultWorkers = 100
 // Serve serves incoming connections from the given listener.
 //
 // Serve blocks until the given listener returns permanent error.
-func (s *Server) Serve(ln net.Listener) error {
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	workers := s.getWorkers()
 
 	s.mu.Lock()
@@ -896,14 +896,12 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 	s.mu.Unlock()
 
-	g, ctx := errgroup.WithContext(context.Background())
-
-	// Count our waiting to accept a connection as an open connection.
-	// This way we can't get into any weird state where just after accepting
-	// a connection Shutdown is called which reads open as 0 because it isn't
-	// incremented yet.
-	atomic.AddInt32(&s.open, 1)
-	defer atomic.AddInt32(&s.open, -1)
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		<-ctx.Done()
+		close(s.done)
+		return nil
+	})
 
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
@@ -914,7 +912,7 @@ func (s *Server) Serve(ln net.Listener) error {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
-				if c, err = acceptConn(s, ln); err != nil {
+				if c, err = s.accept(ln); err != nil {
 					if err == io.EOF {
 						return nil
 					}
@@ -939,53 +937,7 @@ func (s *Server) Serve(ln net.Listener) error {
 	return g.Wait()
 }
 
-// Shutdown gracefully shuts down the server without interrupting any active connections.
-// Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle and then shut down.
-//
-// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS immediately return nil.
-// Make sure the program doesn't exit and waits instead for Shutdown to return.
-//
-// Shutdown does not close keepalive connections so its recommended to set ReadTimeout and IdleTimeout to something else than 0.
-func (s *Server) Shutdown() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	atomic.StoreInt32(&s.stop, 1)
-	defer atomic.StoreInt32(&s.stop, 0)
-
-	if s.ln == nil {
-		return nil
-	}
-
-	for _, ln := range s.ln {
-		if err := ln.Close(); err != nil {
-			return err
-		}
-	}
-
-	if s.done != nil {
-		close(s.done)
-	}
-
-	// Closing the listener will make Serve() call Stop on the worker pool.
-	// Setting .stop to 1 will make serveConn() break out of its loop.
-	// Now we just have to wait until all workers are done.
-	for {
-		if open := atomic.LoadInt32(&s.open); open == 0 {
-			break
-		}
-		// This is not an optimal solution but using a sync.WaitGroup
-		// here causes data races as it's hard to prevent Add() to be called
-		// while Wait() is waiting.
-		time.Sleep(time.Millisecond * 100)
-	}
-
-	s.done = nil
-	s.ln = nil
-	return nil
-}
-
-func acceptConn(s *Server, ln net.Listener) (net.Conn, error) {
+func (s *Server) accept(ln net.Listener) (net.Conn, error) {
 	for {
 		c, err := ln.Accept()
 		if err != nil {
@@ -1316,6 +1268,28 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 
 		if serverName != nil && len(ctx.Response.Header.Server()) == 0 {
 			ctx.Response.Header.SetServerBytes(serverName)
+		}
+
+		if bw == nil {
+			bw = acquireWriter(ctx)
+		}
+		if err = writeResponse(ctx, bw); err != nil {
+			break
+		}
+
+		// Only flush the writer if we don't have another request in the pipeline.
+		// This is a big of an ugly optimization for https://www.techempower.com/benchmarks/
+		// This benchmark will send 16 pipelined requests. It is faster to pack as many responses
+		// in a TCP packet and send it back at once than waiting for a flush every request.
+		// In real world circumstances this behaviour could be argued as being wrong.
+		if br == nil || br.Buffered() == 0 || connectionClose {
+			err = bw.Flush()
+			if err != nil {
+				break
+			}
+		}
+		if connectionClose {
+			break
 		}
 
 		s.setState(c, StateIdle)

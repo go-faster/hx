@@ -200,24 +200,19 @@ var (
 	errConnectionClosed = errors.New("connection closed")
 )
 
-type timeoutError struct {
-}
+type TimeoutErr struct{}
 
-func (e *timeoutError) Error() string {
-	return "timeout"
-}
+func (e *TimeoutErr) Error() string { return "timeout" }
 
-// Only implement the Timeout() function of the net.Error interface.
+// Timeout of the net.Error interface.
 // This allows for checks like:
 //
 //   if x, ok := err.(interface{ Timeout() bool }); ok && x.Timeout() {
-func (e *timeoutError) Timeout() bool {
-	return true
-}
+func (e *TimeoutErr) Timeout() bool { return true }
 
 var (
 	// ErrTimeout is returned from Read() or Write() on timeout.
-	ErrTimeout = &timeoutError{}
+	ErrTimeout = &TimeoutErr{}
 )
 
 func (c *pipeConn) Close() error {

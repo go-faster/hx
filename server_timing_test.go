@@ -2,6 +2,7 @@ package hx
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -143,7 +144,7 @@ func BenchmarkServerTimeoutError(b *testing.B) {
 		Workers: 16 * clientsCount,
 	}
 	req := "GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n"
-	benchmarkServer(b, s, clientsCount, requestsPerConn, req)
+	benchmarkServer(b, serveCtx(context.TODO(), s), clientsCount, requestsPerConn, req)
 	verifyRequestsServed(b, ch)
 }
 
@@ -294,7 +295,7 @@ func benchmarkServerGet(b *testing.B, clientsCount, requestsPerConn int) {
 		},
 		Workers: 16 * clientsCount,
 	}
-	benchmarkServer(b, s, clientsCount, requestsPerConn, getRequest)
+	benchmarkServer(b, serveCtx(context.TODO(), s), clientsCount, requestsPerConn, getRequest)
 	verifyRequestsServed(b, ch)
 }
 
@@ -318,6 +319,19 @@ func benchmarkNetHTTPServerGet(b *testing.B, clientsCount, requestsPerConn int) 
 	verifyRequestsServed(b, ch)
 }
 
+type serveAdapter struct {
+	ctx context.Context
+	s   *Server
+}
+
+func serveCtx(ctx context.Context, s *Server) realServer {
+	return &serveAdapter{ctx: ctx, s: s}
+}
+
+func (s serveAdapter) Serve(ln net.Listener) error {
+	return s.s.Serve(s.ctx, ln)
+}
+
 func benchmarkServerPost(b *testing.B, clientsCount, requestsPerConn int) {
 	ch := make(chan struct{}, b.N)
 	s := &Server{
@@ -337,7 +351,7 @@ func benchmarkServerPost(b *testing.B, clientsCount, requestsPerConn int) {
 		},
 		Workers: 16 * clientsCount,
 	}
-	benchmarkServer(b, s, clientsCount, requestsPerConn, postRequest)
+	benchmarkServer(b, serveCtx(context.TODO(), s), clientsCount, requestsPerConn, postRequest)
 	verifyRequestsServed(b, ch)
 }
 
@@ -402,7 +416,7 @@ func benchmarkServer(b *testing.B, s realServer, clientsCount, requestsPerConn i
 	ln := newFakeListener(b.N, clientsCount, requestsPerConn, request)
 	ch := make(chan struct{})
 	go func() {
-		s.Serve(ln) //nolint:errcheck
+		_ = s.Serve(ln)
 		ch <- struct{}{}
 	}()
 
