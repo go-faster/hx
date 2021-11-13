@@ -1,6 +1,7 @@
 package hx_test
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -29,7 +30,7 @@ func ExampleServer() {
 	// Start the server listening for incoming requests on the given address.
 	//
 	// ListenAndServe returns only on error, so usually it blocks forever.
-	if err := s.ListenAndServe("127.0.0.1:80"); err != nil {
+	if err := s.ListenAndServe(context.Background(), "127.0.0.1:80"); err != nil {
 		log.Fatalf("error in ListenAndServe: %s", err)
 	}
 }

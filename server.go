@@ -232,7 +232,7 @@ func (ln tcpKeepaliveListener) Accept() (net.Conn, error) {
 // such as IPv6.
 //
 // Accepted connections are configured to enable TCP keep-alives.
-func (s *Server) ListenAndServe(addr string) error {
+func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	if s.Handler == nil {
 		s.Handler = Nop
 	}
@@ -241,7 +241,7 @@ func (s *Server) ListenAndServe(addr string) error {
 		return err
 	}
 	if tcpln, ok := ln.(*net.TCPListener); ok {
-		return s.Serve(context.TODO(), tcpKeepaliveListener{
+		return s.Serve(ctx, tcpKeepaliveListener{
 			TCPListener:     tcpln,
 			keepalive:       s.TCPKeepalive,
 			keepalivePeriod: s.TCPKeepalivePeriod,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/go-faster/hx"
@@ -13,5 +14,5 @@ func main() {
 			ctx.Response.AppendBodyString("Hello, world")
 		},
 	}
-	log.Fatal(s.ListenAndServe("localhost:8080"))
+	log.Fatal(s.ListenAndServe(context.Background(), "localhost:8080"))
 }
