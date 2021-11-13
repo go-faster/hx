@@ -4,7 +4,7 @@ Work in progress.
 
 Simplified and reworked fork of [fasthttp](https://github.com/valyala/fasthttp).
 
-Intended to serve plaintext HTTP 1.1 behind load balancer and reverse-pory in controlled
+Intended to serve plaintext HTTP 1.1 behind load balancer and reverse-proxy in controlled
 environment.
 
 Fully buffer request or response.
