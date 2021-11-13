@@ -140,7 +140,7 @@ func BenchmarkServerTimeoutError(b *testing.B) {
 			}
 			registerServedRequest(b, ch)
 		},
-		Concurrency: 16 * clientsCount,
+		Workers: 16 * clientsCount,
 	}
 	req := "GET /foo HTTP/1.1\r\nHost: google.com\r\n\r\n"
 	benchmarkServer(b, s, clientsCount, requestsPerConn, req)
@@ -292,7 +292,7 @@ func benchmarkServerGet(b *testing.B, clientsCount, requestsPerConn int) {
 			}
 			registerServedRequest(b, ch)
 		},
-		Concurrency: 16 * clientsCount,
+		Workers: 16 * clientsCount,
 	}
 	benchmarkServer(b, s, clientsCount, requestsPerConn, getRequest)
 	verifyRequestsServed(b, ch)
@@ -335,7 +335,7 @@ func benchmarkServerPost(b *testing.B, clientsCount, requestsPerConn int) {
 			}
 			registerServedRequest(b, ch)
 		},
-		Concurrency: 16 * clientsCount,
+		Workers: 16 * clientsCount,
 	}
 	benchmarkServer(b, s, clientsCount, requestsPerConn, postRequest)
 	verifyRequestsServed(b, ch)

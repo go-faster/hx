@@ -226,7 +226,7 @@ func (r *Response) BodyWriteTo(w io.Writer) error {
 //
 // It is safe re-using p after the function returns.
 func (r *Response) AppendBody(p []byte) {
-	r.bodyBuffer().Write(p) //nolint:errcheck
+	r.bodyBuffer().Put(p) //nolint:errcheck
 }
 
 // AppendBodyString appends s to response body.
@@ -812,22 +812,19 @@ type httpWriter interface {
 var ErrBodyTooLarge = errors.New("body size exceeds the given limit")
 
 func readBody(r *bufio.Reader, contentLength int, buf *Buffer) error {
-	if contentLength >= 0 {
+	switch {
+	case contentLength >= 0:
 		if err := readBodyFixed(r, buf, contentLength); err != nil {
 			return errors.Wrap(err, "fixed")
 		}
-
-		return nil
-	}
-	if contentLength == lenChunked {
+	case contentLength == lenChunked:
 		if err := readBodyChunked(r, buf); err != nil {
 			return errors.Wrap(err, "chunked")
 		}
-
-		return nil
-	}
-	if err := readBodyIdentity(r, buf); err != nil {
-		return errors.Wrap(err, "identity")
+	default:
+		if err := readBodyIdentity(r, buf); err != nil {
+			return errors.Wrap(err, "identity")
+		}
 	}
 
 	return nil

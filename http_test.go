@@ -1079,7 +1079,7 @@ func testResponseReadError(t *testing.T, resp *Response, response string) {
 }
 
 func testResponseReadSuccess(t *testing.T, resp *Response, response string, expectedStatusCode, expectedContentLength int,
-	expectedContenType, expectedBody, expectedTrailer string) {
+	expectedContentType, expectedBody, expectedTrailer string) {
 
 	r := bytes.NewBufferString(response)
 	rb := bufio.NewReader(r)
@@ -1088,7 +1088,7 @@ func testResponseReadSuccess(t *testing.T, resp *Response, response string, expe
 		t.Fatalf("Unexpected error: %s", err)
 	}
 
-	verifyResponseHeader(t, &resp.Header, expectedStatusCode, expectedContentLength, expectedContenType)
+	verifyResponseHeader(t, &resp.Header, expectedStatusCode, expectedContentLength, expectedContentType)
 	if !bytes.Equal(resp.Body(), []byte(expectedBody)) {
 		t.Fatalf("Unexpected body %q. Expected %q", resp.Body(), []byte(expectedBody))
 	}
@@ -1098,39 +1098,40 @@ func testResponseReadSuccess(t *testing.T, resp *Response, response string, expe
 func TestReadBodyFixedSize(t *testing.T) {
 	t.Parallel()
 
-	// zero-size body
-	testReadBodyFixedSize(t, 0)
-
-	// small-size body
-	testReadBodyFixedSize(t, 3)
-
-	// medium-size body
-	testReadBodyFixedSize(t, 1024)
-
-	// large-size body
-	testReadBodyFixedSize(t, 1024*1024)
-
-	// smaller body after big one
-	testReadBodyFixedSize(t, 34345)
+	t.Run("Zero", func(t *testing.T) {
+		testReadBodyFixedSize(t, 0)
+	})
+	t.Run("Small", func(t *testing.T) {
+		testReadBodyFixedSize(t, 3)
+	})
+	t.Run("Medium", func(t *testing.T) {
+		testReadBodyFixedSize(t, 1024)
+	})
+	t.Run("Large", func(t *testing.T) {
+		testReadBodyFixedSize(t, 1024*1024)
+		// smaller body after big one
+		testReadBodyFixedSize(t, 34345)
+	})
 }
 
 func TestReadBodyChunked(t *testing.T) {
 	t.Parallel()
 
-	// zero-size body
-	testReadBodyChunked(t, 0)
+	t.Run("Zero", func(t *testing.T) {
+		testReadBodyChunked(t, 0)
+	})
+	t.Run("Small", func(t *testing.T) {
+		testReadBodyChunked(t, 5)
+	})
+	t.Run("Medium", func(t *testing.T) {
+		testReadBodyChunked(t, 43488)
+	})
+	t.Run("Big", func(t *testing.T) {
+		testReadBodyChunked(t, 3*1024*1024)
 
-	// small-size body
-	testReadBodyChunked(t, 5)
-
-	// medium-size body
-	testReadBodyChunked(t, 43488)
-
-	// big body
-	testReadBodyChunked(t, 3*1024*1024)
-
-	// smaler body after big one
-	testReadBodyChunked(t, 12343)
+		// Smaller after big.
+		testReadBodyChunked(t, 12343)
+	})
 }
 
 func TestRequestURI(t *testing.T) {
@@ -1226,27 +1227,27 @@ func testRequestPostArgsSuccess(t *testing.T, req *Request, s string, expectedAr
 func testReadBodyChunked(t *testing.T, bodySize int) {
 	body := createFixedBody(bodySize)
 	chunkedBody := createChunkedBody(body)
-	expectedTrailer := []byte("chunked shit")
+	expectedTrailer := []byte("trailer")
 	chunkedBody = append(chunkedBody, expectedTrailer...)
 
 	r := bytes.NewBuffer(chunkedBody)
 	br := bufio.NewReader(r)
 	b := new(Buffer)
-	require.NoError(t, readBody(br, -1, b))
-	require.Equal(t, body, b.Buf)
+	require.NoError(t, readBody(br, lenChunked, b))
+	require.True(t, bytes.Equal(b.Buf, body), "unexpected body")
 	verifyTrailer(t, br, string(expectedTrailer))
 }
 
 func testReadBodyFixedSize(t *testing.T, bodySize int) {
 	t.Helper()
 	body := createFixedBody(bodySize)
-	expectedTrailer := []byte("traler aaaa")
+	expectedTrailer := []byte("trailer")
 	bodyWithTrailer := append(body, expectedTrailer...)
 
 	r := bytes.NewBuffer(bodyWithTrailer)
 	br := bufio.NewReader(r)
 	b := new(Buffer)
-	require.NoError(t, readBody(br, -1, b))
+	require.NoError(t, readBody(br, len(body), b))
 	require.Equal(t, body, b.Buf)
 	verifyTrailer(t, br, string(expectedTrailer))
 }

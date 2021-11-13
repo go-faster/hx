@@ -116,24 +116,3 @@ func ExampleRequestCtx_TimeoutError() {
 		log.Fatalf("error in ListenAndServe: %s", err)
 	}
 }
-
-func ExampleRequestCtx_Logger() {
-	requestHandler := func(ctx *hx.Ctx) {
-		if string(ctx.Path()) == "/top-secret" {
-			ctx.Logger().Printf("Alarm! Alien intrusion detected!")
-			ctx.Error("Access denied!", hx.StatusForbidden)
-			return
-		}
-
-		// Logger may be cached in local variables.
-		logger := ctx.Logger()
-
-		logger.Printf("Good request from User-Agent %q", ctx.Request.Header.UserAgent())
-		fmt.Fprintf(ctx, "Good request to %q", ctx.Path())
-		logger.Printf("Multiple log messages may be written during a single request")
-	}
-
-	if err := hx.ListenAndServe(":80", requestHandler); err != nil {
-		log.Fatalf("error in ListenAndServe: %s", err)
-	}
-}
