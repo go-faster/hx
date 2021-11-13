@@ -1,11 +1,12 @@
 package hxutil
 
 import (
-	"errors"
 	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/go-faster/errors"
 )
 
 // NewPipeConns returns new bi-directional connection pipe.

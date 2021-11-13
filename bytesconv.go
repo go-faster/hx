@@ -5,7 +5,6 @@ package hx
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -15,6 +14,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/go-faster/errors"
 )
 
 // AppendHTMLEscape appends html-escaped s to dst and returns the extended dst.

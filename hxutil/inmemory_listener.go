@@ -1,9 +1,10 @@
 package hxutil
 
 import (
-	"errors"
 	"net"
 	"sync"
+
+	"github.com/go-faster/errors"
 )
 
 // ErrInmemoryListenerClosed indicates that the InmemoryListener is already closed.

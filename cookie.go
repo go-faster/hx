@@ -2,10 +2,11 @@ package hx
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/go-faster/errors"
 )
 
 var zeroTime time.Time

@@ -2,10 +2,11 @@ package hx
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"sort"
 	"sync"
+
+	"github.com/go-faster/errors"
 
 	"github.com/valyala/bytebufferpool"
 )

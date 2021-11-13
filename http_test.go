@@ -347,23 +347,11 @@ func TestRequestReadEOF(t *testing.T) {
 	var r Request
 
 	br := bufio.NewReader(&bytes.Buffer{})
-	err := r.Read(br)
-	if err == nil {
-		t.Fatalf("expecting error")
-	}
-	if err != io.EOF {
-		t.Fatalf("unexpected error: %s. Expecting %s", err, io.EOF)
-	}
+	require.ErrorIs(t, r.Read(br), io.EOF)
 
 	// incomplete request mustn't return io.EOF
 	br = bufio.NewReader(bytes.NewBufferString("POST / HTTP/1.1\r\nContent-Type: aa\r\nContent-Length: 1234\r\n\r\nIncomplete body"))
-	err = r.Read(br)
-	if err == nil {
-		t.Fatalf("expecting error")
-	}
-	if err == io.EOF {
-		t.Fatalf("expecting non-EOF error")
-	}
+	require.ErrorIs(t, r.Read(br), io.ErrUnexpectedEOF)
 }
 
 func TestResponseReadEOF(t *testing.T) {
@@ -372,23 +360,11 @@ func TestResponseReadEOF(t *testing.T) {
 	var r Response
 
 	br := bufio.NewReader(&bytes.Buffer{})
-	err := r.Read(br)
-	if err == nil {
-		t.Fatalf("expecting error")
-	}
-	if err != io.EOF {
-		t.Fatalf("unexpected error: %s. Expecting %s", err, io.EOF)
-	}
+	require.ErrorIs(t, r.Read(br), io.EOF)
 
 	// incomplete response mustn't return io.EOF
 	br = bufio.NewReader(bytes.NewBufferString("HTTP/1.1 200 OK\r\nContent-Type: aaa\r\nContent-Length: 123\r\n\r\nIncomplete body"))
-	err = r.Read(br)
-	if err == nil {
-		t.Fatalf("expecting error")
-	}
-	if err == io.EOF {
-		t.Fatalf("expecting non-EOF error")
-	}
+	require.ErrorIs(t, r.Read(br), io.ErrUnexpectedEOF)
 }
 
 func TestRequestReadNoBody(t *testing.T) {
@@ -792,14 +768,9 @@ func TestRequestReadChunked(t *testing.T) {
 	s := "POST /foo HTTP/1.1\r\nHost: google.com\r\nTransfer-Encoding: chunked\r\nContent-Type: aa/bb\r\n\r\n3\r\nabc\r\n5\r\n12345\r\n0\r\n\r\ntrail"
 	r := bytes.NewBufferString(s)
 	rb := bufio.NewReader(r)
-	err := req.Read(rb)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading chunked request: %s", err)
-	}
+	require.NoError(t, req.Read(rb))
 	expectedBody := "abc12345"
-	if string(req.Body()) != expectedBody {
-		t.Fatalf("Unexpected body %q. Expected %q", req.Body(), expectedBody)
-	}
+	require.Equal(t, expectedBody, string(req.Body()))
 	verifyRequestHeader(t, &req.Header, 8, "/foo", "google.com", "", "aa/bb")
 	verifyTrailer(t, rb, "trail")
 }
@@ -813,14 +784,8 @@ func TestRequestChunkedWhitespace(t *testing.T) {
 	s := "POST /foo HTTP/1.1\r\nHost: google.com\r\nTransfer-Encoding: chunked\r\nContent-Type: aa/bb\r\n\r\n3  \r\nabc\r\n0\r\n\r\n"
 	r := bytes.NewBufferString(s)
 	rb := bufio.NewReader(r)
-	err := req.Read(rb)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading chunked request: %s", err)
-	}
-	expectedBody := "abc"
-	if string(req.Body()) != expectedBody {
-		t.Fatalf("Unexpected body %q. Expected %q", req.Body(), expectedBody)
-	}
+	require.NoError(t, req.Read(rb))
+	require.Equal(t, "abc", string(req.Body()))
 }
 
 func TestResponseReadWithoutBody(t *testing.T) {
@@ -1266,22 +1231,23 @@ func testReadBodyChunked(t *testing.T, bodySize int) {
 
 	r := bytes.NewBuffer(chunkedBody)
 	br := bufio.NewReader(r)
-	b := new(bytes.Buffer)
+	b := new(Buffer)
 	require.NoError(t, readBody(br, -1, b))
-	require.Equal(t, body, b.Bytes())
+	require.Equal(t, body, b.Buf)
 	verifyTrailer(t, br, string(expectedTrailer))
 }
 
 func testReadBodyFixedSize(t *testing.T, bodySize int) {
+	t.Helper()
 	body := createFixedBody(bodySize)
 	expectedTrailer := []byte("traler aaaa")
 	bodyWithTrailer := append(body, expectedTrailer...)
 
 	r := bytes.NewBuffer(bodyWithTrailer)
 	br := bufio.NewReader(r)
-	b := new(bytes.Buffer)
+	b := new(Buffer)
 	require.NoError(t, readBody(br, -1, b))
-	require.Equal(t, body, b.Bytes())
+	require.Equal(t, body, b.Buf)
 	verifyTrailer(t, br, string(expectedTrailer))
 }
 

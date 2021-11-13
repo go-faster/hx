@@ -3,12 +3,13 @@ package hx
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-faster/errors"
 )
 
 const (

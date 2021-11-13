@@ -2,11 +2,12 @@ package hx
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"sync"
+
+	"github.com/go-faster/errors"
 )
 
 // AcquireURI returns an empty URI instance from the pool.

@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/go-faster/errors"
 )
 
 // Request represents HTTP request.
@@ -29,7 +30,7 @@ type Request struct {
 	uri      URI
 	postArgs Args
 
-	body    *bytes.Buffer
+	body    *Buffer
 	bodyRaw []byte
 
 	// Group bool members in order to reduce Request object size.
@@ -57,7 +58,7 @@ type Response struct {
 	// Copying Header by value is forbidden. Use pointer to Header instead.
 	Header ResponseHeader
 
-	body    *bytes.Buffer
+	body    *Buffer
 	bodyRaw []byte
 
 	// Response.Read() skips reading body if set to true.
@@ -175,7 +176,7 @@ func (r *Response) bodyBytes() []byte {
 	if r.body == nil {
 		return nil
 	}
-	return r.body.Bytes()
+	return r.body.Buf
 }
 
 func (r *Request) bodyBytes() []byte {
@@ -185,10 +186,10 @@ func (r *Request) bodyBytes() []byte {
 	if r.body == nil {
 		return nil
 	}
-	return r.body.Bytes()
+	return r.body.Buf
 }
 
-func (r *Response) bodyBuffer() *bytes.Buffer {
+func (r *Response) bodyBuffer() *Buffer {
 	if r.body == nil {
 		r.body = responseBodyPool.Get()
 	}
@@ -196,7 +197,7 @@ func (r *Response) bodyBuffer() *bytes.Buffer {
 	return r.body
 }
 
-func (r *Request) bodyBuffer() *bytes.Buffer {
+func (r *Request) bodyBuffer() *Buffer {
 	if r.body == nil {
 		r.body = requestBodyPool.Get()
 	}
@@ -230,7 +231,7 @@ func (r *Response) AppendBody(p []byte) {
 
 // AppendBodyString appends s to response body.
 func (r *Response) AppendBodyString(s string) {
-	r.bodyBuffer().WriteString(s) //nolint:errcheck
+	r.bodyBuffer().PutString(s) //nolint:errcheck
 }
 
 // SetBody sets response body.
@@ -239,14 +240,14 @@ func (r *Response) AppendBodyString(s string) {
 func (r *Response) SetBody(body []byte) {
 	bodyBuf := r.bodyBuffer()
 	bodyBuf.Reset()
-	bodyBuf.Write(body) //nolint:errcheck
+	bodyBuf.Put(body)
 }
 
 // SetBodyString sets response body.
 func (r *Response) SetBodyString(body string) {
 	bodyBuf := r.bodyBuffer()
 	bodyBuf.Reset()
-	bodyBuf.WriteString(body) //nolint:errcheck
+	bodyBuf.PutString(body)
 }
 
 // ResetBody resets response body.
@@ -287,7 +288,7 @@ func (r *Request) SetBodyRaw(body []byte) {
 // The majority of workloads don't need this method.
 func (r *Response) ReleaseBody(size int) {
 	r.bodyRaw = nil
-	if cap(r.body.Bytes()) > size {
+	if cap(r.body.Buf) > size {
 		r.body = nil
 	}
 }
@@ -301,7 +302,7 @@ func (r *Response) ReleaseBody(size int) {
 // The majority of workloads don't need this method.
 func (r *Request) ReleaseBody(size int) {
 	r.bodyRaw = nil
-	if cap(r.body.Bytes()) > size {
+	if cap(r.body.Buf) > size {
 		r.body = nil
 	}
 }
@@ -322,12 +323,12 @@ func (r *Request) Body() []byte {
 //
 // It is safe re-using p after the function returns.
 func (r *Request) AppendBody(p []byte) {
-	r.bodyBuffer().Write(p)
+	r.bodyBuffer().Put(p)
 }
 
 // AppendBodyString appends s to request body.
 func (r *Request) AppendBodyString(s string) {
-	r.bodyBuffer().WriteString(s)
+	r.bodyBuffer().PutString(s)
 }
 
 // SetBody sets request body.
@@ -335,13 +336,13 @@ func (r *Request) AppendBodyString(s string) {
 // It is safe re-using body argument after the function returns.
 func (r *Request) SetBody(body []byte) {
 	r.bodyBuffer().Reset()
-	r.bodyBuffer().Write(body)
+	r.bodyBuffer().Put(body)
 }
 
 // SetBodyString sets request body.
 func (r *Request) SetBodyString(body string) {
 	r.bodyBuffer().Reset()
-	r.bodyBuffer().WriteString(body)
+	r.bodyBuffer().PutString(body)
 }
 
 // ResetBody resets request body.
@@ -499,7 +500,7 @@ func (r *Response) resetSkipHeader() {
 func (r *Request) Read(reader *bufio.Reader) error {
 	r.resetSkipHeader()
 	if err := r.Header.Read(reader); err != nil {
-		return err
+		return errors.Wrap(err, "header")
 	}
 
 	return r.readBody(reader)
@@ -532,6 +533,11 @@ func (r *Request) MayContinue() bool {
 	return bytes.Equal(r.Header.peek(strExpect), str100Continue)
 }
 
+const (
+	lenIdentity = -2 // identity body
+	lenChunked  = -1 // chunk encoded
+)
+
 // ContinueReadBody reads request body if request header contains
 // 'Expect: 100-continue'.
 //
@@ -540,8 +546,8 @@ func (r *Request) MayContinue() bool {
 // If maxBodySize > 0 and the body size exceeds maxBodySize,
 // then ErrBodyTooLarge is returned.
 func (r *Request) ContinueReadBody(reader *bufio.Reader) error {
-	contentLength := r.Header.realContentLength()
-	if contentLength == -2 {
+	l := r.Header.realContentLength()
+	if l == lenIdentity {
 		// identity body has no sense for http requests, since
 		// the end of body is determined by connection close.
 		// So just ignore request body for requests without
@@ -553,7 +559,7 @@ func (r *Request) ContinueReadBody(reader *bufio.Reader) error {
 		return nil
 	}
 
-	return r.ReadBody(reader, contentLength)
+	return r.ReadBody(reader, l)
 }
 
 // ReadBody reads request body from the given r, limiting the body size.
@@ -565,7 +571,7 @@ func (r *Request) ReadBody(reader *bufio.Reader, contentLength int) error {
 	b.Reset()
 	if err := readBody(reader, contentLength, b); err != nil {
 		r.Reset()
-		return err
+		return errors.Wrap(err, "read")
 	}
 	r.Header.SetContentLength(b.Len())
 	return nil
@@ -805,53 +811,74 @@ type httpWriter interface {
 // the given limit.
 var ErrBodyTooLarge = errors.New("body size exceeds the given limit")
 
-func readBody(r *bufio.Reader, contentLength int, buf *bytes.Buffer) error {
+func readBody(r *bufio.Reader, contentLength int, buf *Buffer) error {
 	if contentLength >= 0 {
-		return readBodyFixed(r, buf, contentLength)
+		if err := readBodyFixed(r, buf, contentLength); err != nil {
+			return errors.Wrap(err, "fixed")
+		}
+
+		return nil
 	}
-	if contentLength == -1 {
-		return readBodyChunked(r, buf)
+	if contentLength == lenChunked {
+		if err := readBodyChunked(r, buf); err != nil {
+			return errors.Wrap(err, "chunked")
+		}
+
+		return nil
 	}
-	return readBodyIdentity(r, buf)
+	if err := readBodyIdentity(r, buf); err != nil {
+		return errors.Wrap(err, "identity")
+	}
+
+	return nil
 }
 
-func readBodyIdentity(r *bufio.Reader, b *bytes.Buffer) error {
-	_, err := b.ReadFrom(r)
+func readBodyIdentity(r *bufio.Reader, b *Buffer) error {
+	_, err := r.WriteTo(b)
 	return err
 }
 
-func readBodyFixed(r *bufio.Reader, b *bytes.Buffer, n int) error {
+func readBodyFixed(r *bufio.Reader, b *Buffer, n int) error {
 	if n == 0 {
 		return nil
 	}
-	_, err := b.ReadFrom(r)
-	return err
+
+	start := b.Len()
+	b.Expand(n)
+	if _, err := io.ReadFull(r, b.Buf[start:start+n]); err != nil {
+		return errors.Wrapf(err, "read full %d", n)
+	}
+
+	return nil
 }
 
 // ErrBrokenChunk is returned when server receives a broken chunked body (Transfer-Encoding: chunked).
 type ErrBrokenChunk struct {
-	error
+	Reason string
 }
 
-func readBodyChunked(r *bufio.Reader, b *bytes.Buffer) error {
+func (e *ErrBrokenChunk) Error() string {
+	return fmt.Sprintf("broken chunk: %s", e.Reason)
+}
+
+func readBodyChunked(r *bufio.Reader, b *Buffer) error {
 	const crlfLen = 2
 	for {
+		start := len(b.Buf)
 		chunkSize, err := parseChunkSize(r)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "size")
 		}
 		if err := readBodyFixed(r, b, chunkSize+crlfLen); err != nil {
-			return err
+			return errors.Wrap(err, "fixed")
 		}
-		crlf := make([]byte, crlfLen)
-		if _, err := b.Read(crlf); err != nil {
-			return err
+		if b.Len() < crlfLen {
+			return io.ErrUnexpectedEOF
 		}
-		if !bytes.Equal(crlf, strCRLF) {
-			return ErrBrokenChunk{
-				error: errors.New("cannot find crlf at the end of chunk"),
-			}
+		if !bytes.Equal(strCRLF, b.Buf[start+chunkSize:]) {
+			return errors.Wrap(&ErrBrokenChunk{Reason: "no crlf at the end"}, "not equal")
 		}
+		b.Buf = b.Buf[:start+chunkSize]
 		if chunkSize == 0 {
 			return nil
 		}
@@ -861,13 +888,13 @@ func readBodyChunked(r *bufio.Reader, b *bytes.Buffer) error {
 func parseChunkSize(r *bufio.Reader) (int, error) {
 	n, err := readHexInt(r)
 	if err != nil {
-		return -1, err
+		return -1, errors.Wrap(err, "read hex int")
 	}
 	for {
 		c, err := r.ReadByte()
 		if err != nil {
-			return -1, ErrBrokenChunk{
-				error: fmt.Errorf("cannot read '\r' char at the end of chunk size: %s", err),
+			return -1, &ErrBrokenChunk{
+				Reason: fmt.Sprintf("cannot read '\r' char at the end of chunk size: %s", err),
 			}
 		}
 		// Skip any trailing whitespace after chunk size.
@@ -875,30 +902,29 @@ func parseChunkSize(r *bufio.Reader) (int, error) {
 			continue
 		}
 		if err := r.UnreadByte(); err != nil {
-			return -1, ErrBrokenChunk{
-				error: fmt.Errorf("cannot unread '\r' char at the end of chunk size: %s", err),
+			return -1, &ErrBrokenChunk{
+				Reason: fmt.Sprintf("cannot unread '\r' char at the end of chunk size: %s", err),
 			}
 		}
 		break
 	}
-	err = readCrLf(r)
-	if err != nil {
-		return -1, err
+	if err := readCRLF(r); err != nil {
+		return -1, errors.Wrap(err, "read crlf")
 	}
 	return n, nil
 }
 
-func readCrLf(r *bufio.Reader) error {
+func readCRLF(r *bufio.Reader) error {
 	for _, exp := range []byte{'\r', '\n'} {
 		c, err := r.ReadByte()
 		if err != nil {
-			return ErrBrokenChunk{
-				error: fmt.Errorf("cannot read %q char at the end of chunk size: %s", exp, err),
+			return &ErrBrokenChunk{
+				Reason: fmt.Sprintf("cannot read %q char at the end of chunk size: %s", exp, err),
 			}
 		}
 		if c != exp {
-			return ErrBrokenChunk{
-				error: fmt.Errorf("unexpected char %q at the end of chunk size. Expected %q", c, exp),
+			return &ErrBrokenChunk{
+				Reason: fmt.Sprintf("unexpected char %q at the end of chunk size. Expected %q", c, exp),
 			}
 		}
 	}
