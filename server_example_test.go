@@ -3,59 +3,9 @@ package hx_test
 import (
 	"fmt"
 	"log"
-	"net"
 
 	"github.com/go-faster/hx"
 )
-
-func ExampleListenAndServe() {
-	// The server will listen for incoming requests on this address.
-	listenAddr := "127.0.0.1:80"
-
-	// This function will be called by the server for each incoming request.
-	//
-	// Ctx provides a lot of functionality related to http request
-	// processing. See Ctx docs for details.
-	requestHandler := func(ctx *hx.Ctx) {
-		fmt.Fprintf(ctx, "Hello, world! Requested path is %q", ctx.Path())
-	}
-
-	// Start the server with default settings.
-	// Create Server instance for adjusting server settings.
-	//
-	// ListenAndServe returns only on error, so usually it blocks forever.
-	if err := hx.ListenAndServe(listenAddr, requestHandler); err != nil {
-		log.Fatalf("error in ListenAndServe: %s", err)
-	}
-}
-
-func ExampleServe() {
-	// Create network listener for accepting incoming requests.
-	//
-	// Note that you are not limited by TCP listener - arbitrary
-	// net.Listener may be used by the server.
-	// For example, unix socket listener or TLS listener.
-	ln, err := net.Listen("tcp4", "127.0.0.1:8080")
-	if err != nil {
-		log.Fatalf("error in net.Listen: %s", err)
-	}
-
-	// This function will be called by the server for each incoming request.
-	//
-	// Ctx provides a lot of functionality related to http request
-	// processing. See Ctx docs for details.
-	requestHandler := func(ctx *hx.Ctx) {
-		fmt.Fprintf(ctx, "Hello, world! Requested path is %q", ctx.Path())
-	}
-
-	// Start the server with default settings.
-	// Create Server instance for adjusting server settings.
-	//
-	// Serve returns on ln.Close() or error, so usually it blocks forever.
-	if err := hx.Serve(ln, requestHandler); err != nil {
-		log.Fatalf("error in Serve: %s", err)
-	}
-}
 
 func ExampleServer() {
 	// This function will be called by the server for each incoming request.

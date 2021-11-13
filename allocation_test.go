@@ -35,6 +35,30 @@ func TestAllocationServeConn(t *testing.T) {
 	}
 }
 
+func BenchmarkServeConn(b *testing.B) {
+	const req = "GET / HTTP/1.1\r\nHost: google.com\r\nCookie: foo=bar\r\n\r\n"
+
+	s := &Server{
+		Handler: func(ctx *Ctx) {},
+	}
+
+	rw := &readWriter{}
+	// Make space for the request and response here so it
+	// doesn't allocate within the test.
+	rw.r.Grow(1024)
+	rw.w.Grow(1024)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(req)))
+
+	for i := 0; i < b.N; i++ {
+		rw.w.Reset()
+		rw.r.WriteString(req)
+		if err := s.ServeConn(rw); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestAllocationURI(t *testing.T) {
 	uri := []byte("http://username:password@hello.%e4%b8%96%e7%95%8c.com/some/path?foo=bar#test")
 

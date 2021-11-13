@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-faster/hx/hxutil"
@@ -627,12 +628,14 @@ func TestServerHTTP10ConnectionKeepAlive(t *testing.T) {
 
 	ch := make(chan struct{})
 	go func() {
-		err := Serve(ln, func(ctx *Ctx) {
-			if string(ctx.Path()) == "/close" {
-				ctx.SetConnectionClose()
-			}
-		})
-		if err != nil {
+		s := &Server{
+			Handler: func(ctx *Ctx) {
+				if string(ctx.Path()) == "/close" {
+					ctx.SetConnectionClose()
+				}
+			},
+		}
+		if err := s.Serve(context.Background(), ln); err != nil {
 			t.Errorf("unexpected error: %s", err)
 		}
 		close(ch)
@@ -707,19 +710,19 @@ func TestServerHTTP10ConnectionClose(t *testing.T) {
 
 	ch := make(chan struct{})
 	go func() {
-		err := Serve(ln, func(ctx *Ctx) {
-			// The server must close the connection irregardless
-			// of request and response state set inside request
-			// handler, since the HTTP/1.0 request
-			// had no 'Connection: keep-alive' header.
-			ctx.Request.Header.ResetConnectionClose()
-			ctx.Request.Header.Set(HeaderConnection, "keep-alive")
-			ctx.Response.Header.ResetConnectionClose()
-			ctx.Response.Header.Set(HeaderConnection, "keep-alive")
-		})
-		if err != nil {
-			t.Errorf("unexpected error: %s", err)
+		s := &Server{
+			Handler: func(ctx *Ctx) {
+				// The server must close the connection irregardless
+				// of request and response state set inside request
+				// handler, since the HTTP/1.0 request
+				// had no 'Connection: keep-alive' header.
+				ctx.Request.Header.ResetConnectionClose()
+				ctx.Request.Header.Set(HeaderConnection, "keep-alive")
+				ctx.Response.Header.ResetConnectionClose()
+				ctx.Response.Header.Set(HeaderConnection, "keep-alive")
+			},
 		}
+		assert.NoError(t, s.Serve(context.Background(), ln))
 		close(ch)
 	}()
 
@@ -962,73 +965,6 @@ func TestRequestCtxWriteString(t *testing.T) {
 	s := ctx.Response.Body()
 	if string(s) != "fooпривет" {
 		t.Fatalf("unexpected response body %q. Expecting %q", s, "fooпривет")
-	}
-}
-
-func TestServeConnNonHTTP11KeepAlive(t *testing.T) {
-	t.Parallel()
-
-	rw := &readWriter{}
-	rw.r.WriteString("GET /foo HTTP/1.0\r\nConnection: keep-alive\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /bar HTTP/1.0\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /must/be/ignored HTTP/1.0\r\nHost: google.com\r\n\r\n")
-
-	requestsServed := 0
-
-	ch := make(chan struct{})
-	go func() {
-		err := ServeConn(rw, func(ctx *Ctx) {
-			requestsServed++
-			ctx.SuccessString("aaa/bbb", "foobar")
-		})
-		if err != nil {
-			t.Errorf("unexpected error in ServeConn: %s", err)
-		}
-		close(ch)
-	}()
-
-	select {
-	case <-ch:
-	case <-time.After(time.Second):
-		t.Fatal("timeout")
-	}
-
-	br := bufio.NewReader(&rw.w)
-
-	var resp Response
-
-	// verify the first response
-	if err := resp.Read(br); err != nil {
-		t.Fatalf("Unexpected error when parsing response: %s", err)
-	}
-	if string(resp.Header.Peek(HeaderConnection)) != "keep-alive" {
-		t.Fatalf("unexpected Connection header %q. Expecting %q", resp.Header.Peek(HeaderConnection), "keep-alive")
-	}
-	if resp.Header.ConnectionClose() {
-		t.Fatal("unexpected Connection: close")
-	}
-
-	// verify the second response
-	if err := resp.Read(br); err != nil {
-		t.Fatalf("Unexpected error when parsing response: %s", err)
-	}
-	if string(resp.Header.Peek(HeaderConnection)) != "close" {
-		t.Fatalf("unexpected Connection header %q. Expecting %q", resp.Header.Peek(HeaderConnection), "close")
-	}
-	if !resp.Header.ConnectionClose() {
-		t.Fatal("expecting Connection: close")
-	}
-
-	data, err := ioutil.ReadAll(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading remaining data: %s", err)
-	}
-	if len(data) != 0 {
-		t.Fatalf("Unexpected data read after responses %q", data)
-	}
-
-	if requestsServed != 2 {
-		t.Fatalf("unexpected number of requests served: %d. Expecting 2", requestsServed)
 	}
 }
 

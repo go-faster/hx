@@ -268,7 +268,7 @@ func benchmarkServerGet(b *testing.B, clientsCount, requestsPerConn int) {
 			}
 			registerServedRequest(b, ch)
 		},
-		Workers: 16 * clientsCount,
+		Workers: clientsCount,
 	}
 	benchmarkServer(b, serveCtx(context.TODO(), s), clientsCount, requestsPerConn, getRequest)
 	verifyRequestsServed(b, ch)

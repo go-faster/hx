@@ -15,51 +15,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// ServeConn serves HTTP requests from the given connection
-// using the given handler.
-//
-// ServeConn returns nil if all requests from the c are successfully served.
-// It returns non-nil error otherwise.
-//
-// Connection c must immediately propagate all the data passed to Write()
-// to the client. Otherwise requests' processing may hang.
-//
-// ServeConn closes c before returning.
-func ServeConn(c net.Conn, handler Handler) error {
-	v := serverPool.Get()
-	if v == nil {
-		v = &Server{}
-	}
-	s := v.(*Server)
-	s.Handler = handler
-	err := s.ServeConn(c)
-	s.Handler = nil
-	serverPool.Put(v)
-	return err
-}
-
-var serverPool sync.Pool
-
-// Serve serves incoming connections from the given listener
-// using the given handler.
-//
-// Serve blocks until the given listener returns permanent error.
-func Serve(ln net.Listener, handler Handler) error {
-	s := &Server{
-		Handler: handler,
-	}
-	return s.Serve(context.TODO(), ln)
-}
-
-// ListenAndServe serves HTTP requests from the given TCP addr
-// using the given handler.
-func ListenAndServe(addr string, handler Handler) error {
-	s := &Server{
-		Handler: handler,
-	}
-	return s.ListenAndServe(addr)
-}
-
 // Handler must process incoming requests.
 //
 // Handler must call ctx.TimeoutError() before returning
@@ -320,10 +275,10 @@ type Ctx struct {
 
 	time time.Time
 
-	lg  *zap.Logger
-	s   *Server
-	c   net.Conn
-	fbr firstByteReader
+	lg   *zap.Logger
+	done <-chan struct{}
+	c    net.Conn
+	fbr  firstByteReader
 }
 
 // Value is no-op implementation for context.Context.
@@ -1034,7 +989,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		} else {
 			// If this is a keep-alive connection acquireByteReader will try to peek
 			// a couple of bytes already so the idle timeout will already be used.
-			br, err = acquireByteReader(&ctx)
+			br, err = s.acquireByteReader(&ctx)
 		}
 
 		ctx.Response.Header.noDefaultContentType = s.NoDefaultContentType
@@ -1137,7 +1092,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 
 			if continueReadingRequest {
 				if bw == nil {
-					bw = acquireWriter(ctx)
+					bw = s.acquireWriter(ctx)
 				}
 
 				// Send 'HTTP/1.1 100 Continue' response.
@@ -1152,7 +1107,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 
 				// Read request body.
 				if br == nil {
-					br = acquireReader(ctx)
+					br = s.acquireReader(ctx)
 				}
 
 				if err := ctx.Request.ContinueReadBody(br); err != nil {
@@ -1211,7 +1166,7 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		}
 
 		if bw == nil {
-			bw = acquireWriter(ctx)
+			bw = s.acquireWriter(ctx)
 		}
 		if err = writeResponse(ctx, bw); err != nil {
 			break
@@ -1275,14 +1230,13 @@ const (
 	defaultWriteBufferSize = 4096
 )
 
-func acquireByteReader(ctxP **Ctx) (*bufio.Reader, error) {
+func (s *Server) acquireByteReader(ctxP **Ctx) (*bufio.Reader, error) {
 	ctx := *ctxP
-	s := ctx.s
 	c := ctx.c
 	s.releaseCtx(ctx)
 
-	// Make GC happy, so it could garbage collect ctx
-	// while we waiting for the next request.
+	// Make GC happy, so it could collect ctx
+	// while we are waiting for the next request.
 	ctx = nil
 	*ctxP = nil
 
@@ -1303,15 +1257,15 @@ func acquireByteReader(ctxP **Ctx) (*bufio.Reader, error) {
 	ctx.fbr.c = c
 	ctx.fbr.ch = b[0]
 	ctx.fbr.byteRead = false
-	r := acquireReader(ctx)
+	r := s.acquireReader(ctx)
 	r.Reset(&ctx.fbr)
 	return r, nil
 }
 
-func acquireReader(ctx *Ctx) *bufio.Reader {
-	v := ctx.s.readerPool.Get()
+func (s *Server) acquireReader(ctx *Ctx) *bufio.Reader {
+	v := s.readerPool.Get()
 	if v == nil {
-		n := ctx.s.ReadBufferSize
+		n := s.ReadBufferSize
 		if n <= 0 {
 			n = defaultReadBufferSize
 		}
@@ -1326,10 +1280,10 @@ func releaseReader(s *Server, r *bufio.Reader) {
 	s.readerPool.Put(r)
 }
 
-func acquireWriter(ctx *Ctx) *bufio.Writer {
-	v := ctx.s.writerPool.Get()
+func (s *Server) acquireWriter(ctx *Ctx) *bufio.Writer {
+	v := s.writerPool.Get()
 	if v == nil {
-		n := ctx.s.WriteBufferSize
+		n := s.WriteBufferSize
 		if n <= 0 {
 			n = defaultWriteBufferSize
 		}
@@ -1347,9 +1301,7 @@ func releaseWriter(s *Server, w *bufio.Writer) {
 func (s *Server) acquireCtx(c net.Conn) (ctx *Ctx) {
 	v := s.ctxPool.Get()
 	if v == nil {
-		ctx = &Ctx{
-			s: s,
-		}
+		ctx = &Ctx{}
 		ctx.Request.keepBodyBuffer = true
 		ctx.Response.keepBodyBuffer = true
 	} else {
@@ -1372,9 +1324,7 @@ func (c *Ctx) Deadline() (deadline time.Time, ok bool) {
 // Done returns a channel that's closed when work done on behalf of this
 // context should be canceled. Done may return nil if this context can
 // never be canceled. Successive calls to Done return the same value.
-func (c *Ctx) Done() <-chan struct{} {
-	return c.s.done
-}
+func (c *Ctx) Done() <-chan struct{} { return c.done }
 
 // Err returns a non-nil error value after Done is closed,
 // successive calls to Err return the same error.
@@ -1384,7 +1334,7 @@ func (c *Ctx) Done() <-chan struct{} {
 // or DeadlineExceeded if the context's deadline passed.
 func (c *Ctx) Err() error {
 	select {
-	case <-c.s.done:
+	case <-c.done:
 		return context.Canceled
 	default:
 		return nil
@@ -1460,7 +1410,7 @@ func (s *Server) writeErrorResponse(bw *bufio.Writer, ctx *Ctx, serverName []byt
 	}
 	ctx.SetConnectionClose()
 	if bw == nil {
-		bw = acquireWriter(ctx)
+		bw = s.acquireWriter(ctx)
 	}
 	writeResponse(ctx, bw) //nolint:errcheck
 	bw.Flush()
