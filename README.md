@@ -38,3 +38,11 @@ Running 10s test @ http://localhost:8080
 Requests/sec: 1613299.37
 Transfer/sec:    226.17MB
 ```
+
+```
+name          old time/op    new time/op     delta
+ServeConn-32     675ns ± 2%      411ns ± 2%  -39.07%  (p=0.000 n=10+10)
+
+name          old speed      new speed       delta
+ServeConn-32  78.5MB/s ± 2%  128.9MB/s ± 2%  +64.14%  (p=0.000 n=10+10)
+```
