@@ -225,7 +225,6 @@ func TestURICopyTo(t *testing.T) {
 	if !reflect.DeepEqual(u, copyU) { //nolint:govet
 		t.Fatalf("URICopyTo fail, u: \n%+v\ncopyu: \n%+v\n", u, copyU) //nolint:govet
 	}
-
 }
 
 func TestURIFullURI(t *testing.T) {

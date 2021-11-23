@@ -142,11 +142,6 @@ func (r *Request) SetConnectionClose() {
 	r.Header.SetConnectionClose()
 }
 
-func (r *Response) parseNetConn(conn net.Conn) {
-	r.raddr = conn.RemoteAddr()
-	r.laddr = conn.LocalAddr()
-}
-
 // RemoteAddr returns the remote network address. The Addr returned is shared
 // by all invocations of RemoteAddr, so do not modify it.
 func (r *Response) RemoteAddr() net.Addr {
@@ -736,7 +731,7 @@ func (r *Request) Write(w *bufio.Writer) error {
 		hasBody = true
 		r.Header.SetContentLength(len(body))
 	}
-	if err = r.Header.Write(w); err != nil {
+	if err := r.Header.Write(w); err != nil {
 		return err
 	}
 	if hasBody {

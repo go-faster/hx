@@ -1,2 +1,2 @@
-// Package fasthttputil provides utility functions for fasthttp.
+// Package hxutil provides utility functions for fasthttp.
 package hxutil

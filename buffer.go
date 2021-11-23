@@ -9,6 +9,7 @@ type Buffer struct {
 	Buf []byte
 }
 
+// Reset buffer.
 func (b *Buffer) Reset() {
 	b.Buf = b.Buf[:0]
 }
@@ -75,6 +76,7 @@ func (b *Buffer) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
+// PutString writes string to buffer.
 func (b *Buffer) PutString(s string) {
 	b.Buf = append(b.Buf, s...)
 }

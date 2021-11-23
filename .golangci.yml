@@ -33,6 +33,8 @@ linters-settings:
       - appendAssign
       - unnecessaryBlock
       - redundantSprint
+      - unnamedResult
+      - ifElseChain
 
 linters:
   disable-all: true
@@ -86,6 +88,7 @@ issues:
         - gocognit
         - scopelint
         - lll
+        - unparam
 
     - path: _test\.go
       text: "Combine"
@@ -101,6 +104,9 @@ issues:
     # Ignore shadowing of err.
     - linters: [ govet ]
       text: 'declaration of "(err|ctx|log|c)"'
+
+    - linters: [ unused, deadcode, varcheck ]
+      path: (strings|nocopy)\.go
 
     # Ignore linters in main packages.
     - path: main\.go

@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"reflect"
 	"strings"
@@ -140,7 +139,7 @@ func TestResponseHeaderEmptyValueFromHeader(t *testing.T) {
 	if err := h.Read(br); err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	if string(h.ContentType()) != string(h1.ContentType()) {
+	if !bytes.Equal(h.ContentType(), h1.ContentType()) {
 		t.Fatalf("unexpected content-type: %q. Expecting %q", h.ContentType(), h1.ContentType())
 	}
 	v1 := h.Peek("EmptyValue1")
@@ -195,7 +194,7 @@ func TestRequestHeaderEmptyValueFromHeader(t *testing.T) {
 	if err := h.Read(br); err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
-	if string(h.Host()) != string(h1.Host()) {
+	if !bytes.Equal(h.Host(), h1.Host()) {
 		t.Fatalf("unexpected host: %q. Expecting %q", h.Host(), h1.Host())
 	}
 	v1 := h.Peek("EmptyValue1")
@@ -314,7 +313,7 @@ func TestRequestRawHeaders(t *testing.T) {
 		if err := h.Read(br); err != nil {
 			t.Fatalf("unexpected error: %s", err)
 		}
-		if string(h.Host()) != "" {
+		if len(h.Host()) != 0 {
 			t.Fatalf("unexpected host: %q. Expecting %q", h.Host(), "")
 		}
 		v1 := h.Peek("NoKey")
@@ -622,7 +621,7 @@ func TestResponseHeaderDel(t *testing.T) {
 		t.Fatalf("non-zero value: %q", hv)
 	}
 	hv = h.Peek(HeaderContentType)
-	if string(hv) != string(defaultContentType) {
+	if !bytes.Equal(hv, defaultContentType) {
 		t.Fatalf("unexpected content-type: %q. Expecting %q", hv, defaultContentType)
 	}
 	hv = h.Peek(HeaderServer)
@@ -1870,7 +1869,7 @@ func testRequestHeaderMethod(t *testing.T, expectedMethod string) {
 		t.Fatalf("unexpected error: %s", err)
 	}
 	m1 := h1.Method()
-	if string(m) != string(m1) {
+	if !bytes.Equal(m, m1) {
 		t.Fatalf("unexpected method: %q. Expecting %q", m, m1)
 	}
 }
@@ -2078,7 +2077,7 @@ type bufioPeekReader struct {
 }
 
 func (r *bufioPeekReader) Read(b []byte) (int, error) {
-	if len(r.s) == 0 {
+	if r.s == "" {
 		return 0, io.EOF
 	}
 
@@ -2629,12 +2628,6 @@ func verifyResponseHeader(t *testing.T, h *ResponseHeader, expectedStatusCode, e
 	}
 }
 
-func verifyResponseHeaderConnection(t *testing.T, h *ResponseHeader, expectConnection string) {
-	if string(h.Peek(HeaderConnection)) != expectConnection {
-		t.Fatalf("Unexpected Connection %q. Expected %q", h.Peek(HeaderConnection), expectConnection)
-	}
-}
-
 func verifyRequestHeader(t *testing.T, h *RequestHeader, expectedContentLength int,
 	expectedRequestURI, expectedHost, expectedReferer, expectedContentType string) {
 	if h.ContentLength() != expectedContentLength {
@@ -2656,7 +2649,7 @@ func verifyRequestHeader(t *testing.T, h *RequestHeader, expectedContentLength i
 
 func verifyTrailer(t *testing.T, r *bufio.Reader, expectedTrailer string) {
 	t.Helper()
-	trailer, err := ioutil.ReadAll(r)
+	trailer, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatalf("Cannot read trailer: %s", err)
 	}

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"reflect"
 	"strconv"
@@ -133,7 +132,6 @@ func TestResponseCopyTo(t *testing.T) {
 	resp.Header.SetStatusCode(200)
 	resp.SetBodyString("test")
 	testResponseCopyTo(t, &resp)
-
 }
 
 func testRequestCopyTo(t *testing.T, src *Request) {
@@ -516,7 +514,7 @@ func TestRequestReadPostNoBody(t *testing.T) {
 		t.Fatalf("unexpected content-length: %d. Expecting 0", r.Header.ContentLength())
 	}
 
-	tail, err := ioutil.ReadAll(br)
+	tail, err := io.ReadAll(br)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -547,7 +545,7 @@ func TestRequestContinueReadBody(t *testing.T) {
 		t.Fatalf("unexpected body %q. Expecting %q", body, "abcde")
 	}
 
-	tail, err := ioutil.ReadAll(br)
+	tail, err := io.ReadAll(br)
 	if err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
@@ -588,10 +586,9 @@ func TestRequestContinueReadBodyDisablePrereadMultipartForm(t *testing.T) {
 		t.Fatalf("unexpected error reading body: %s", err)
 	}
 
-	if string(formData) != string(r.Body()) {
+	if !bytes.Equal(formData, r.Body()) {
 		t.Fatalf("The body given must equal the body in the Request")
 	}
-
 }
 
 func TestRequestMayContinue(t *testing.T) {
@@ -906,7 +903,7 @@ func testRequestSuccess(t *testing.T, method, requestURI, host, userAgent, body,
 	if string(req1.Header.Method()) != expectedMethod {
 		t.Fatalf("Unexpected method: %q. Expected %q", req1.Header.Method(), expectedMethod)
 	}
-	if len(requestURI) == 0 {
+	if requestURI == "" {
 		requestURI = "/"
 	}
 	if string(req1.Header.RequestURI()) != requestURI {
@@ -1001,7 +998,6 @@ func testResponseReadError(t *testing.T, resp *Response, response string) {
 }
 
 func testResponseReadSuccess(t *testing.T, resp *Response, response string, expectedStatusCode, expectedContentLength int, expectedContentType, expectedBody, expectedTrailer string) {
-
 	r := bytes.NewBufferString(response)
 	rb := bufio.NewReader(r)
 	err := resp.Read(rb)
@@ -1117,7 +1113,7 @@ func testRequestPostArgsError(t *testing.T, req *Request, s string) {
 		t.Fatalf("Unexpected error when reading %q: %s", s, err)
 	}
 	ss := req.PostArgs().String()
-	if len(ss) != 0 {
+	if ss != "" {
 		t.Fatalf("unexpected post args: %q. Expecting empty post args", ss)
 	}
 }

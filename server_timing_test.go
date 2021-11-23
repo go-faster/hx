@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"runtime"
@@ -337,7 +336,7 @@ func benchmarkNetHTTPServerPost(b *testing.B, clientsCount, requestsPerConn int)
 			if req.Method != MethodPost {
 				b.Fatalf("Unexpected request method: %s", req.Method)
 			}
-			body, err := ioutil.ReadAll(req.Body)
+			body, err := io.ReadAll(req.Body)
 			if err != nil {
 				b.Fatalf("Unexpected error: %s", err)
 			}

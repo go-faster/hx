@@ -248,7 +248,7 @@ func (h *ResponseHeader) SetContentLength(contentLength int) {
 			h.SetConnectionClose()
 			value = strIdentity
 		}
-		h.h = setArgBytes(h.h, strTransferEncoding, value, argsHasValue)
+		h.h = setArgBytes(h.h, strTransferEncoding, value)
 	}
 }
 
@@ -290,18 +290,8 @@ func (h *RequestHeader) SetContentLength(contentLength int) {
 		h.h = delAllArgsBytes(h.h, strTransferEncoding)
 	} else {
 		h.contentLengthBytes = h.contentLengthBytes[:0]
-		h.h = setArgBytes(h.h, strTransferEncoding, strChunked, argsHasValue)
+		h.h = setArgBytes(h.h, strTransferEncoding, strChunked)
 	}
-}
-
-func (h *ResponseHeader) isCompressibleContentType() bool {
-	contentType := h.ContentType()
-	return bytes.HasPrefix(contentType, strTextSlash) ||
-		bytes.HasPrefix(contentType, strApplicationSlash) ||
-		bytes.HasPrefix(contentType, strImageSVG) ||
-		bytes.HasPrefix(contentType, strImageIcon) ||
-		bytes.HasPrefix(contentType, strFontSlash) ||
-		bytes.HasPrefix(contentType, strMultipartSlash)
 }
 
 // ContentType returns Content-Type header value.
@@ -973,7 +963,7 @@ func (h *ResponseHeader) setSpecialHeader(key, value []byte) bool {
 				h.SetConnectionClose()
 			} else {
 				h.ResetConnectionClose()
-				h.h = setArgBytes(h.h, key, value, argsHasValue)
+				h.h = setArgBytes(h.h, key, value)
 			}
 			return true
 		}
@@ -1025,7 +1015,7 @@ func (h *RequestHeader) setSpecialHeader(key, value []byte) bool {
 				h.SetConnectionClose()
 			} else {
 				h.ResetConnectionClose()
-				h.h = setArgBytes(h.h, key, value, argsHasValue)
+				h.h = setArgBytes(h.h, key, value)
 			}
 			return true
 		} else if caseInsensitiveCompare(strCookie, key) {
@@ -1103,7 +1093,7 @@ func (h *ResponseHeader) AddBytesKV(key, value []byte) {
 	}
 
 	k := getHeaderKeyBytes(&h.bufKV, b2s(key), h.disableNormalizing)
-	h.h = appendArgBytes(h.h, k, value, argsHasValue)
+	h.h = appendArgBytes(h.h, k, value)
 }
 
 // Set sets the given 'key: value' header.
@@ -1146,14 +1136,14 @@ func (h *ResponseHeader) SetCanonical(key, value []byte) {
 		return
 	}
 
-	h.h = setArgBytes(h.h, key, value, argsHasValue)
+	h.h = setArgBytes(h.h, key, value)
 }
 
 // SetCookie sets the given response cookie.
 //
 // It is save re-using the cookie after the function returns.
 func (h *ResponseHeader) SetCookie(cookie *Cookie) {
-	h.cookies = setArgBytes(h.cookies, cookie.Key(), cookie.Cookie(), argsHasValue)
+	h.cookies = setArgBytes(h.cookies, cookie.Key(), cookie.Cookie())
 }
 
 // SetCookie sets 'key: value' cookies.
@@ -1288,7 +1278,7 @@ func (h *RequestHeader) AddBytesKV(key, value []byte) {
 	}
 
 	k := getHeaderKeyBytes(&h.bufKV, b2s(key), h.disableNormalizing)
-	h.h = appendArgBytes(h.h, k, value, argsHasValue)
+	h.h = appendArgBytes(h.h, k, value)
 }
 
 // Set sets the given 'key: value' header.
@@ -1331,7 +1321,7 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 		return
 	}
 
-	h.h = setArgBytes(h.h, key, value, argsHasValue)
+	h.h = setArgBytes(h.h, key, value)
 }
 
 // Peek returns header value for the given key.
@@ -1441,7 +1431,7 @@ func (h *ResponseHeader) Cookie(cookie *Cookie) bool {
 	if v == nil {
 		return false
 	}
-	cookie.ParseBytes(v) //nolint:errcheck
+	_ = cookie.ParseBytes(v)
 	return true
 }
 
@@ -1463,6 +1453,7 @@ func (h *ResponseHeader) Read(r *bufio.Reader) error {
 	}
 }
 
+// ErrTimeout means that timeout occurred.
 var ErrTimeout = errors.New("timeout")
 
 func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
@@ -1995,7 +1986,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 						h.connectionClose = true
 					} else {
 						h.connectionClose = false
-						h.h = appendArgBytes(h.h, s.key, s.value, argsHasValue)
+						h.h = appendArgBytes(h.h, s.key, s.value)
 					}
 					continue
 				}
@@ -2014,12 +2005,12 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 				if caseInsensitiveCompare(s.key, strTransferEncoding) {
 					if len(s.value) > 0 && !bytes.Equal(s.value, strIdentity) {
 						h.contentLength = -1
-						h.h = setArgBytes(h.h, strTransferEncoding, strChunked, argsHasValue)
+						h.h = setArgBytes(h.h, strTransferEncoding, strChunked)
 					}
 					continue
 				}
 			}
-			h.h = appendArgBytes(h.h, s.key, s.value, argsHasValue)
+			h.h = appendArgBytes(h.h, s.key, s.value)
 		}
 	}
 	if s.err != nil {
@@ -2031,7 +2022,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 	}
 	if h.contentLength == -2 && !h.ConnectionUpgrade() && !h.mustSkipContentLength() {
-		h.h = setArgBytes(h.h, strTransferEncoding, strIdentity, argsHasValue)
+		h.h = setArgBytes(h.h, strTransferEncoding, strIdentity)
 		h.connectionClose = true
 	}
 	if h.noHTTP11 && !h.connectionClose {
@@ -2094,7 +2085,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 						h.connectionClose = true
 					} else {
 						h.connectionClose = false
-						h.h = appendArgBytes(h.h, s.key, s.value, argsHasValue)
+						h.h = appendArgBytes(h.h, s.key, s.value)
 					}
 					continue
 				}
@@ -2102,13 +2093,13 @@ func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 				if caseInsensitiveCompare(s.key, strTransferEncoding) {
 					if !bytes.Equal(s.value, strIdentity) {
 						h.contentLength = -1
-						h.h = setArgBytes(h.h, strTransferEncoding, strChunked, argsHasValue)
+						h.h = setArgBytes(h.h, strTransferEncoding, strChunked)
 					}
 					continue
 				}
 			}
 		}
-		h.h = appendArgBytes(h.h, s.key, s.value, argsHasValue)
+		h.h = appendArgBytes(h.h, s.key, s.value)
 	}
 	if s.err != nil && err == nil {
 		err = s.err
@@ -2401,7 +2392,7 @@ func normalizeHeaderValue(ov, ob []byte, headerLength int) (nv, nb []byte, nhl i
 
 	nb = ob[write+skip : len(ob)-shrunk]
 	nhl = headerLength - shrunk
-	return
+	return nv, nb, nhl
 }
 
 func normalizeHeaderKey(b []byte, disableNormalizing bool) {

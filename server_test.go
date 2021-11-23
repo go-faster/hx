@@ -8,11 +8,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -324,7 +322,7 @@ func TestServerName(t *testing.T) {
 			t.Fatalf("Unexpected error from serveConn: %s", err)
 		}
 
-		resp, err := ioutil.ReadAll(&rw.w)
+		resp, err := io.ReadAll(&rw.w)
 		if err != nil {
 			t.Fatalf("Unexpected error from ReadAll: %s", err)
 		}
@@ -623,7 +621,7 @@ func TestServerHTTP10ConnectionKeepAlive(t *testing.T) {
 
 	tailCh := make(chan struct{})
 	go func() {
-		tail, err := ioutil.ReadAll(br)
+		tail, err := io.ReadAll(br)
 		if err != nil {
 			t.Errorf("error when reading tail: %s", err)
 		}
@@ -699,7 +697,7 @@ func TestServerHTTP10ConnectionClose(t *testing.T) {
 
 	tailCh := make(chan struct{})
 	go func() {
-		tail, err := ioutil.ReadAll(br)
+		tail, err := io.ReadAll(br)
 		if err != nil {
 			t.Errorf("error when reading tail: %s", err)
 		}
@@ -766,7 +764,7 @@ func TestServerHeadRequest(t *testing.T) {
 		t.Fatalf("unexpected content-type %q. Expecting %q", resp.Header.ContentType(), "aaa/bbb")
 	}
 
-	data, err := ioutil.ReadAll(br)
+	data, err := io.ReadAll(br)
 	if err != nil {
 		t.Fatalf("Unexpected error when reading remaining data: %s", err)
 	}
@@ -807,7 +805,7 @@ func TestServerExpect100Continue(t *testing.T) {
 	br := bufio.NewReader(&rw.w)
 	verifyResponse(t, br, StatusOK, string(defaultContentType), "foobar")
 
-	data, err := ioutil.ReadAll(br)
+	data, err := io.ReadAll(br)
 	if err != nil {
 		t.Fatalf("Unexpected error when reading remaining data: %s", err)
 	}
@@ -868,7 +866,7 @@ func TestServerConnectionClose(t *testing.T) {
 		t.Fatal("expecting Connection: close header")
 	}
 
-	data, err := ioutil.ReadAll(br)
+	data, err := io.ReadAll(br)
 	if err != nil {
 		t.Fatalf("Unexpected error when reading remaining data: %s", err)
 	}
@@ -1167,15 +1165,4 @@ func (rw *readWriter) SetReadDeadline(t time.Time) error {
 
 func (rw *readWriter) SetWriteDeadline(t time.Time) error {
 	return nil
-}
-
-type testLogger struct {
-	lock sync.Mutex
-	out  string
-}
-
-func (cl *testLogger) Printf(format string, args ...interface{}) {
-	cl.lock.Lock()
-	cl.out += fmt.Sprintf(format, args...)[6:] + "\n"
-	cl.lock.Unlock()
 }

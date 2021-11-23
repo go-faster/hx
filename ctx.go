@@ -45,7 +45,6 @@ type Ctx struct {
 	lg   *zap.Logger
 	done <-chan struct{}
 	c    net.Conn
-	fbr  firstByteReader
 }
 
 // Value is no-op implementation for context.Context.
@@ -60,27 +59,6 @@ func (c *Ctx) Value(key interface{}) interface{} {
 // Reading from or writing to the returned connection will end badly!
 func (c *Ctx) Conn() net.Conn {
 	return c.c
-}
-
-type firstByteReader struct {
-	c    net.Conn
-	byte []byte
-	read bool
-}
-
-func (r *firstByteReader) Read(b []byte) (int, error) {
-	if len(b) == 0 {
-		return 0, nil
-	}
-	nn := 0
-	if !r.read {
-		b[0] = r.byte[0]
-		b = b[1:]
-		r.read = true
-		nn = 1
-	}
-	n, err := r.c.Read(b)
-	return n + nn, err
 }
 
 var zeroTCPAddr = &net.TCPAddr{
@@ -284,7 +262,7 @@ func (c *Ctx) RemoteAddr() net.Addr {
 
 // SetRemoteAddr sets remote address to the given value.
 //
-// Set nil value to resore default behaviour for using
+// Set nil value to resore default behavior for using
 // connection remote address.
 func (c *Ctx) SetRemoteAddr(remoteAddr net.Addr) {
 	c.remoteAddr = remoteAddr

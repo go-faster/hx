@@ -226,7 +226,7 @@ func (a *Args) SetBytesV(key string, value []byte) {
 
 // SetBytesKV sets 'key=value' argument.
 func (a *Args) SetBytesKV(key, value []byte) {
-	a.args = setArgBytes(a.args, key, value, argsHasValue)
+	a.args = setArgBytes(a.args, key, value)
 }
 
 // SetNoValue sets only 'key' as argument without the '='.
@@ -409,8 +409,8 @@ func delAllArgs(args []argsKV, key string) []argsKV {
 	return args
 }
 
-func setArgBytes(h []argsKV, key, value []byte, noValue bool) []argsKV {
-	return setArg(h, b2s(key), b2s(value), noValue)
+func setArgBytes(h []argsKV, key, value []byte) []argsKV {
+	return setArg(h, b2s(key), b2s(value), argsHasValue)
 }
 
 func setArg(h []argsKV, key, value string, noValue bool) []argsKV {
@@ -430,8 +430,8 @@ func setArg(h []argsKV, key, value string, noValue bool) []argsKV {
 	return appendArg(h, key, value, noValue)
 }
 
-func appendArgBytes(h []argsKV, key, value []byte, noValue bool) []argsKV {
-	return appendArg(h, b2s(key), b2s(value), noValue)
+func appendArgBytes(h []argsKV, key, value []byte) []argsKV {
+	return appendArg(h, b2s(key), b2s(value), argsHasValue)
 }
 
 func appendArg(args []argsKV, key, value string, noValue bool) []argsKV {

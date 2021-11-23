@@ -583,7 +583,7 @@ func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err erro
 		// This is a big of an ugly optimization for https://www.techempower.com/benchmarks/
 		// This benchmark will send 16 pipelined requests. It is faster to pack as many responses
 		// in a TCP packet and send it back at once than waiting for a flush every request.
-		// In real world circumstances this behaviour could be argued as being wrong.
+		// In real world circumstances this behavior could be argued as being wrong.
 		if r.Buffered() == 0 || connClose {
 			if err := w.Flush(); err != nil {
 				return errors.Wrap(err, "flush")
@@ -661,7 +661,7 @@ func (s *Server) getServerName() []byte {
 }
 
 func (s *Server) writeFastError(w io.Writer, statusCode int, msg string) {
-	w.Write(formatStatusLine(nil, strHTTP11, statusCode, s2b(StatusMessage(statusCode)))) //nolint:errcheck
+	_, _ = w.Write(formatStatusLine(nil, strHTTP11, statusCode, s2b(StatusMessage(statusCode))))
 
 	server := ""
 	if !s.NoDefaultServerHeader {

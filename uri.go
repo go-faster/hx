@@ -268,9 +268,8 @@ func (u *URI) SetHostBytes(host []byte) {
 	lowercaseBytes(u.host)
 }
 
-var (
-	ErrorInvalidURI = errors.New("invalid uri")
-)
+// ErrorInvalidURI means that URI is invalid.
+var ErrorInvalidURI = errors.New("invalid uri")
 
 // Parse initializes URI from the given host and uri.
 //
@@ -310,11 +309,11 @@ func (u *URI) parse(host, uri []byte) error {
 	}
 
 	u.host = append(u.host, host...)
-	if parsedHost, err := parseHost(u.host); err != nil {
+	parsedHost, err := parseHost(u.host)
+	if err != nil {
 		return err
-	} else {
-		u.host = parsedHost
 	}
+	u.host = parsedHost
 	lowercaseBytes(u.host)
 
 	b := uri
@@ -416,12 +415,14 @@ const (
 	encodeZone
 )
 
+// EscapeError means that url escaping is invalid.
 type EscapeError string
 
 func (e EscapeError) Error() string {
 	return "invalid URL escape " + strconv.Quote(string(e))
 }
 
+// InvalidHostError means that host name is invalid.
 type InvalidHostError string
 
 func (e InvalidHostError) Error() string {
@@ -800,7 +801,7 @@ func (u *URI) String() string {
 	return string(u.FullURI())
 }
 
-func splitHostURI(host, uri []byte) (scheme []byte, newHost []byte, newURI []byte) {
+func splitHostURI(host, uri []byte) (scheme, newHost, newURI []byte) {
 	n := bytes.Index(uri, strSlashSlash)
 	if n < 0 {
 		return strHTTP, host, uri
