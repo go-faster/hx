@@ -36,10 +36,10 @@ func NewPipeConns() *PipeConns {
 // PipeConns has the following additional features comparing to connections
 // returned from net.Pipe():
 //
-//   * It is faster.
-//   * It buffers Write calls, so there is no need to have concurrent goroutine
+//   - It is faster.
+//   - It buffers Write calls, so there is no need to have concurrent goroutine
 //     calling Read in order to unblock each Write call.
-//   * It supports read and write deadlines.
+//   - It supports read and write deadlines.
 //
 // PipeConns is NOT safe for concurrent use by multiple goroutines!
 type PipeConns struct {
@@ -208,7 +208,7 @@ func (e *TimeoutErr) Error() string { return "timeout" }
 // Timeout of the net.Error interface.
 // This allows for checks like:
 //
-//   if x, ok := err.(interface{ Timeout() bool }); ok && x.Timeout() {
+//	if x, ok := err.(interface{ Timeout() bool }); ok && x.Timeout() {
 func (e *TimeoutErr) Timeout() bool { return true }
 
 var (
