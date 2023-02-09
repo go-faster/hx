@@ -316,8 +316,8 @@ func (s *Server) accept(ln net.Listener) (net.Conn, error) {
 			if c != nil {
 				panic("BUG: net.Listener returned non-nil conn and non-nil error")
 			}
-			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-				s.logger().Error("temporary error while accepting new connections",
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				s.logger().Error("timeout error while accepting new connections",
 					zap.Error(netErr),
 				)
 				time.Sleep(time.Second)

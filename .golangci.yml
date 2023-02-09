@@ -95,6 +95,10 @@ issues:
       linters:
         - gocritic
 
+    - path: _test\.go
+      text: "deferInLoop"
+      linters: [gocritic]
+
     # Check that equal to self is true
     - linters: [gocritic]
       source: '(assert|require).+Equal'
