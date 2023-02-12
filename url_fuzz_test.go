@@ -21,12 +21,14 @@ func FuzzURL(f *testing.F) {
 		f.Add([]byte(s))
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		u := AcquireURI()
-		defer ReleaseURI(u)
+		recoverWith(t, data, func() {
+			u := AcquireURI()
+			defer ReleaseURI(u)
 
-		u.UpdateBytes(data)
+			u.UpdateBytes(data)
 
-		w := bytes.Buffer{}
-		_, _ = u.WriteTo(&w)
+			w := bytes.Buffer{}
+			_, _ = u.WriteTo(&w)
+		})
 	})
 }

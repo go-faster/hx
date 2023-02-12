@@ -23,15 +23,17 @@ func FuzzResponse(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		var r Response
+		recoverWith(t, data, func() {
+			var r Response
 
-		if err := r.Read(bufio.NewReader(bytes.NewReader(data))); err != nil {
-			return
-		}
+			if err := r.Read(bufio.NewReader(bytes.NewReader(data))); err != nil {
+				return
+			}
 
-		w := bytes.Buffer{}
-		if _, err := r.WriteTo(&w); err != nil {
-			return
-		}
+			w := bytes.Buffer{}
+			if _, err := r.WriteTo(&w); err != nil {
+				return
+			}
+		})
 	})
 }
