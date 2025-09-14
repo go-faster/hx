@@ -3,7 +3,7 @@ module github.com/go-faster/hx
 go 1.18
 
 require (
-	github.com/go-faster/errors v0.6.1
+	github.com/go-faster/errors v0.7.1
 	github.com/stretchr/testify v1.11.1
 	github.com/valyala/bytebufferpool v1.0.0
 	go.uber.org/zap v1.24.0
