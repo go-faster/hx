@@ -1,8 +1,7 @@
 package hx
 
 var (
-	defaultServerName  = []byte("fasthttp")
-	defaultUserAgent   = []byte("fasthttp")
+	defaultServerName  = []byte("go-faster/hx")
 	defaultContentType = []byte("text/plain; charset=utf-8")
 )
 

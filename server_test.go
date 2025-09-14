@@ -331,6 +331,7 @@ func TestServerName(t *testing.T) {
 	}
 
 	resp := getResponse()
+
 	if !bytes.Contains(resp, []byte("\r\nServer: "+string(defaultServerName)+"\r\n")) {
 		t.Fatalf("Unexpected response %q expected Server: "+string(defaultServerName), resp)
 	}

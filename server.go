@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-faster/errors"
+	"github.com/go-faster/jx"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -270,7 +271,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 				err error
 			)
 
-			reqCtx := &Ctx{}
+			reqCtx := &Ctx{
+				JSON: &JSONContext{
+					Encoder: &jx.Encoder{},
+					Writer:  &jx.Writer{},
+				},
+			}
 			r := bufio.NewReader(nil)
 			w := bufio.NewWriter(nil)
 
@@ -286,6 +292,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 				}
 
 				reqCtx.ResetBody()
+				reqCtx.JSON.Reset()
 				reqCtx.c = c
 				r.Reset(c)
 				w.Reset(c)
@@ -548,6 +555,7 @@ func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err erro
 			ctx.Response.SkipBody = true
 		}
 		ctx.Request.Reset()
+		ctx.JSON.Reset()
 
 		if writeTimeout > 0 {
 			if err := c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {

@@ -5,15 +5,43 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-faster/jx"
 	"go.uber.org/zap"
 )
+
+// JSONContext is experimental API for writing JSON responses.
+type JSONContext struct {
+	Encoder *jx.Encoder
+	Writer  *jx.Writer
+}
+
+type JSONEncoder interface {
+	JSONEncode(e *jx.Encoder)
+}
+
+type JSONWriter interface {
+	JSONWrite(w *jx.Writer)
+}
+
+func (ctx *JSONContext) Encode(encoder JSONEncoder) {
+	encoder.JSONEncode(ctx.Encoder)
+}
+
+func (ctx *JSONContext) Write(writer JSONWriter) {
+	writer.JSONWrite(ctx.Writer)
+}
+
+func (ctx *JSONContext) Reset() {
+	ctx.Encoder.Reset()
+	ctx.Writer.Reset()
+}
 
 // Ctx contains incoming request and manages outgoing response.
 //
 // It is forbidden to copy Ctx instances.
 //
 // Handler should avoid holding references to incoming Ctx and/or
-// its' members after the return.
+// its members after the return.
 // If holding Ctx references after the return is unavoidable
 // (for instance, ctx is passed to a separate goroutine and ctx lifetime cannot
 // be controlled), then the Handler MUST call ctx.TimeoutError()
@@ -34,6 +62,13 @@ type Ctx struct {
 	//
 	// Copying Response by value is forbidden. Use pointer to Response instead.
 	Response Response
+
+	// JSON provides experimental API for writing JSON responses.
+	//
+	// NOTE: No automatic Content-Type setting is performed and no automatic
+	// response body setting is performed. You must set Content-Type and
+	// write response body manually.
+	JSON *JSONContext
 
 	connID         uint64
 	connRequestNum uint64

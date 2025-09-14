@@ -3,10 +3,9 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
 
 	"github.com/go-faster/hx"
-	"github.com/go-faster/jx"
 )
 
 //go:generate go tool jschemagen -target message.go -typename Message message.schema.json
@@ -19,30 +18,31 @@ func main() {
 	}
 	flag.StringVar(&arg.Addr, "addr", "localhost:8080", "listen address")
 	flag.IntVar(&arg.Workers, "j", 500, "count of workers")
-	flag.StringVar(&arg.Mode, "mode", "plaintext", "response mode: plaintext or json")
 	flag.Parse()
 
-	if arg.Mode != "plaintext" && arg.Mode != "json" {
-		log.Fatalf("unknown mode: %q", arg.Mode)
-	}
+	slog.Info("starting server",
+		slog.String("addr", arg.Addr),
+		slog.Int("workers", arg.Workers),
+	)
 
 	s := &hx.Server{
 		Workers: arg.Workers,
 		Handler: func(ctx *hx.Ctx) {
-			switch arg.Mode {
-			case "plaintext":
+			switch string(ctx.Request.URI().Path()) {
+			case "/plaintext":
 				ctx.Response.AppendBodyString("Hello, World!")
-			case "json":
-				e := jx.GetEncoder()
-				defer jx.PutEncoder(e)
+			case "/json":
+				ctx.Response.Header.Add("Content-Type", "application/json")
 
 				msg := Message{Message: "Hello, World!"}
-				msg.Encode(e)
-
-				ctx.Response.AppendBody(e.Bytes())
+				ctx.JSON.Encode(msg)
+				ctx.Response.AppendBody(ctx.JSON.Encoder.Bytes())
+			default:
+				ctx.Response.SetStatusCode(404)
 			}
 		},
 	}
-
-	log.Fatal(s.ListenAndServe(context.Background(), arg.Addr))
+	if err := s.ListenAndServe(context.Background(), arg.Addr); err != nil {
+		slog.Error("Failed to start server", slog.Any("err", err))
+	}
 }
