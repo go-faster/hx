@@ -442,67 +442,52 @@ func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err erro
 			}
 		}
 
-		// If this is a keep-alive connection we want to try and read the first bytes
-		// within the idle time.
-		if requests > 1 {
-			var b []byte
-			b, err = r.Peek(1)
-			if len(b) == 0 {
-				// If reading from a keep-alive connection returns nothing it means
-				// the connection was closed (either timeout or from the other side).
-				if err != io.EOF {
-					err = ErrNothingRead{err}
-				}
-			}
-		}
-
 		ctx.Response.Header.noDefaultContentType = s.NoDefaultContentType
 		ctx.Response.Header.noDefaultDate = s.NoDefaultDate
 
-		if err == nil {
-			if s.ReadTimeout > 0 {
-				if err := c.SetReadDeadline(time.Now().Add(s.ReadTimeout)); err != nil {
-					panic(fmt.Sprintf("BUG: error in SetReadDeadline(%s): %s", s.ReadTimeout, err))
-				}
-			} else if s.IdleTimeout > 0 && requests > 1 {
-				// If this was an idle connection and the server has an IdleTimeout but
-				// no ReadTimeout then we should remove the ReadTimeout.
-				if err := c.SetReadDeadline(zeroTime); err != nil {
-					panic(fmt.Sprintf("BUG: error in SetReadDeadline(zeroTime): %s", err))
-				}
+		if s.ReadTimeout > 0 {
+			if err := c.SetReadDeadline(time.Now().Add(s.ReadTimeout)); err != nil {
+				panic(fmt.Sprintf("BUG: error in SetReadDeadline(%s): %s", s.ReadTimeout, err))
 			}
-			if s.DisableHeaderNamesNormalizing {
-				ctx.Request.Header.DisableNormalizing()
-				ctx.Response.Header.DisableNormalizing()
-			}
-
-			// Reading Headers.
-			//
-			// If we have pipline response in the outgoing buffer,
-			// we only want to try and read the next headers once.
-			// If we have to wait for the next request we flush the
-			// outgoing buffer first so it doesn't have to wait.
-			if w.Buffered() > 0 {
-				err = ctx.Request.Header.readLoop(r, false)
-				if err == errNeedMore {
-					err = w.Flush()
-					if err != nil {
-						break
-					}
-
-					err = ctx.Request.Header.Read(r)
-				}
-			} else {
-				err = ctx.Request.Header.Read(r)
-			}
-			if err == nil {
-				err = ctx.Request.readBody(r)
-			}
-			if err == nil {
-				// If we read any bytes off the wire, we're active.
-				s.setState(c, StateActive)
+		} else if s.IdleTimeout > 0 && requests > 1 {
+			// If this was an idle connection and the server has an IdleTimeout but
+			// no ReadTimeout then we should remove the ReadTimeout.
+			if err := c.SetReadDeadline(zeroTime); err != nil {
+				panic(fmt.Sprintf("BUG: error in SetReadDeadline(zeroTime): %s", err))
 			}
 		}
+		if s.DisableHeaderNamesNormalizing {
+			ctx.Request.Header.DisableNormalizing()
+			ctx.Response.Header.DisableNormalizing()
+		}
+
+		// Reading Headers.
+		//
+		// If we have pipline response in the outgoing buffer,
+		// we only want to try and read the next headers once.
+		// If we have to wait for the next request we flush the
+		// outgoing buffer first so it doesn't have to wait.
+		if w.Buffered() > 0 {
+			err = ctx.Request.Header.readLoop(r, false)
+			if err == errNeedMore {
+				err = w.Flush()
+				if err != nil {
+					break
+				}
+
+				err = ctx.Request.Header.Read(r)
+			}
+		} else {
+			err = ctx.Request.Header.Read(r)
+		}
+		if err == nil {
+			err = ctx.Request.readBody(r)
+		}
+		if err == nil {
+			// If we read any bytes off the wire, we're active.
+			s.setState(c, StateActive)
+		}
+
 		if err != nil {
 			if err == io.EOF {
 				err = nil

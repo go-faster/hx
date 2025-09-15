@@ -1458,7 +1458,7 @@ var ErrTimeout = errors.New("timeout")
 
 func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 	h.resetSkipNormalize()
-	b, err := r.Peek(n)
+	b, err := r.Peek(n) // TODO: remove
 	if len(b) == 0 {
 		// Return ErrTimeout on any timeout.
 		if x, ok := err.(interface{ Timeout() bool }); ok && x.Timeout() {
@@ -1535,7 +1535,7 @@ func (h *RequestHeader) readLoop(r *bufio.Reader, waitForMore bool) error {
 
 func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
 	h.resetSkipNormalize()
-	b, err := r.Peek(n)
+	b, err := r.Peek(n) // TODO: remove
 	if len(b) == 0 {
 		if err == io.EOF {
 			return err
@@ -2500,7 +2500,7 @@ type ErrSmallBuffer struct {
 }
 
 func mustPeekBuffered(r *bufio.Reader) []byte {
-	buf, err := r.Peek(r.Buffered())
+	buf, err := r.Peek(r.Buffered()) // TODO: remove
 	if len(buf) == 0 || err != nil {
 		panic(fmt.Sprintf("bufio.Reader.Peek() returned unexpected data (%q, %v)", buf, err))
 	}

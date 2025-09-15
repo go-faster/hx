@@ -40,9 +40,11 @@ func main() {
 
 	s := &hx.Server{
 		Workers: arg.Workers,
+		Name:    "hx",
 		Handler: func(ctx *hx.Ctx) {
 			switch string(ctx.Request.URI().Path()) {
 			case "/plaintext":
+				ctx.Response.Header.Add("Content-Type", "text/plain")
 				ctx.Response.AppendBodyString("Hello, World!")
 			case "/json":
 				ctx.Response.Header.Add("Content-Type", "application/json")
