@@ -6,7 +6,7 @@ import (
 	"flag"
 	"log/slog"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" // #nosec G108
 
 	"github.com/go-faster/hx"
 )
@@ -27,6 +27,7 @@ func main() {
 	if arg.Pprof != "" {
 		go func() {
 			slog.Info("starting pprof", slog.String("addr", arg.Pprof))
+			//#nosec G114
 			if err := http.ListenAndServe(arg.Pprof, nil); err != nil {
 				slog.Error("pprof ListenAndServe failed", slog.Any("err", err))
 			}
