@@ -5,6 +5,8 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof"
 
 	"github.com/go-faster/hx"
 )
@@ -15,11 +17,21 @@ func main() {
 	var arg struct {
 		Workers int
 		Addr    string
-		Mode    string
+		Pprof   string
 	}
 	flag.StringVar(&arg.Addr, "addr", "localhost:8080", "listen address")
 	flag.IntVar(&arg.Workers, "j", 500, "count of workers")
+	flag.StringVar(&arg.Pprof, "pprof", "", "pprof listen address (empty to disable)")
 	flag.Parse()
+
+	if arg.Pprof != "" {
+		go func() {
+			slog.Info("starting pprof", slog.String("addr", arg.Pprof))
+			if err := http.ListenAndServe(arg.Pprof, nil); err != nil {
+				slog.Error("pprof ListenAndServe failed", slog.Any("err", err))
+			}
+		}()
+	}
 
 	slog.Info("starting server",
 		slog.String("addr", arg.Addr),
