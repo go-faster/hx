@@ -10,10 +10,12 @@ import (
 
 func main() {
 	var arg struct {
-		Workers int
-		Addr    string
+		Workers   int
+		Addr      string
+		PprofAddr string
 	}
 	flag.StringVar(&arg.Addr, "addr", "localhost:8080", "listen address")
+	flag.StringVar(&arg.PprofAddr, "pprof-addr", "", "listen address for pprof")
 	flag.IntVar(&arg.Workers, "j", 500, "count of workers")
 	flag.Parse()
 	s := &hx.Server{
