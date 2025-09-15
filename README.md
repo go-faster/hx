@@ -28,15 +28,16 @@ Due to different tradeoffs, direct comparison with `net/http` and `fasthttp` is 
 
 Preliminary results on Ryzen 5950x
 ```
-wrk -c 200 -t 12 http://localhost:8080
-Running 10s test @ http://localhost:8080
-  12 threads and 200 connections
+wrk -c 512 -t 16 http://localhost:8082
+Running 10s test @ http://localhost:8082
+  16 threads and 512 connections
   Thread Stats   Avg      Stdev     Max   +/- Stdev
-    Latency   208.27us    1.86ms  66.27ms   98.56%
-    Req/Sec   135.88k     8.35k  175.85k    87.14%
-  16293688 requests in 10.10s, 2.23GB read
-Requests/sec: 1613299.37
-Transfer/sec:    226.17MB
+    Latency   485.65us  527.98us  19.66ms   92.33%
+    Req/Sec    70.20k     4.51k   96.98k    72.80%
+  11204027 requests in 10.09s, 0.98GB read
+  Non-2xx or 3xx responses: 11204027
+Requests/sec: 1110293.92
+Transfer/sec:     99.53MB
 ```
 
 ```
