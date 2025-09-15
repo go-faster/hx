@@ -292,7 +292,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 				}
 
 				reqCtx.ResetBody()
-				reqCtx.JSON.Reset()
+				if reqCtx.JSON != nil {
+					reqCtx.JSON.Reset()
+				}
 				reqCtx.c = c
 				r.Reset(c)
 				w.Reset(c)
@@ -555,7 +557,9 @@ func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err erro
 			ctx.Response.SkipBody = true
 		}
 		ctx.Request.Reset()
-		ctx.JSON.Reset()
+		if ctx.JSON != nil {
+			ctx.JSON.Reset()
+		}
 
 		if writeTimeout > 0 {
 			if err := c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
