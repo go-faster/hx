@@ -440,20 +440,6 @@ func (s *Server) serveConn(ctx *Ctx, r *bufio.Reader, w *bufio.Writer) (err erro
 			}
 		}
 
-		// If this is a keep-alive connection we want to try and read the first bytes
-		// within the idle time.
-		if requests > 1 {
-			var b []byte
-			b, err = r.Peek(1)
-			if len(b) == 0 {
-				// If reading from a keep-alive connection returns nothing it means
-				// the connection was closed (either timeout or from the other side).
-				if err != io.EOF {
-					err = ErrNothingRead{err}
-				}
-			}
-		}
-
 		ctx.Response.Header.noDefaultContentType = s.NoDefaultContentType
 		ctx.Response.Header.noDefaultDate = s.NoDefaultDate
 
