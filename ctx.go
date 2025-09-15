@@ -15,22 +15,27 @@ type JSONContext struct {
 	Writer  *jx.Writer
 }
 
+// JSONEncoder is implemented by types which can encode themselves as JSON.
 type JSONEncoder interface {
 	JSONEncode(e *jx.Encoder)
 }
 
+// JSONWriter is implemented by types which can write themselves as JSON.
 type JSONWriter interface {
 	JSONWrite(w *jx.Writer)
 }
 
+// Encode encodes the given value to JSON using jx.Encoder.
 func (ctx *JSONContext) Encode(encoder JSONEncoder) {
 	encoder.JSONEncode(ctx.Encoder)
 }
 
+// Write writes the given value to JSON using jx.Writer.
 func (ctx *JSONContext) Write(writer JSONWriter) {
 	writer.JSONWrite(ctx.Writer)
 }
 
+// Reset resets internal state of JSONContext.
 func (ctx *JSONContext) Reset() {
 	ctx.Encoder.Reset()
 	ctx.Writer.Reset()
@@ -83,7 +88,7 @@ type Ctx struct {
 }
 
 // Value is no-op implementation for context.Context.
-func (c *Ctx) Value(key interface{}) interface{} {
+func (c *Ctx) Value(_ interface{}) interface{} {
 	return nil
 }
 

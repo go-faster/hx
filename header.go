@@ -605,7 +605,7 @@ func (h *RequestHeader) HasAcceptEncodingBytes(acceptEncoding []byte) bool {
 // i.e. the number of times f is called in VisitAll.
 func (h *ResponseHeader) Len() int {
 	n := 0
-	h.VisitAll(func(k, v []byte) { n++ })
+	h.VisitAll(func(_, _ []byte) { n++ })
 	return n
 }
 
@@ -613,7 +613,7 @@ func (h *ResponseHeader) Len() int {
 // i.e. the number of times f is called in VisitAll.
 func (h *RequestHeader) Len() int {
 	n := 0
-	h.VisitAll(func(k, v []byte) { n++ })
+	h.VisitAll(func(_, _ []byte) { n++ })
 	return n
 }
 
@@ -798,7 +798,7 @@ func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
 		f(strServer, server)
 	}
 	if len(h.cookies) > 0 {
-		visitArgs(h.cookies, func(k, v []byte) {
+		visitArgs(h.cookies, func(_, v []byte) {
 			f(strSetCookie, v)
 		})
 	}
@@ -2238,10 +2238,7 @@ func (s *headerScanner) next() bool {
 		return false
 	}
 	isMultiLineValue := false
-	for {
-		if n+1 >= len(s.b) {
-			break
-		}
+	for n+1 < len(s.b) {
 		if s.b[n+1] != ' ' && s.b[n+1] != '\t' {
 			break
 		}
@@ -2353,7 +2350,7 @@ func normalizeHeaderValue(ov, ob []byte, headerLength int) (nv, nb []byte, nhl i
 	nv = ov
 	length := len(ov)
 	if length <= 0 {
-		return
+		return nv, nb, nhl
 	}
 	write := 0
 	shrunk := 0
@@ -2380,13 +2377,14 @@ func normalizeHeaderValue(ov, ob []byte, headerLength int) (nv, nb []byte, nhl i
 
 	// Check if we need to skip \r\n or just \n
 	skip := 0
-	if ob[write] == rChar {
+	switch ob[write] {
+	case rChar:
 		if ob[write+1] == nChar {
 			skip += 2
 		} else {
 			skip++
 		}
-	} else if ob[write] == nChar {
+	case nChar:
 		skip++
 	}
 

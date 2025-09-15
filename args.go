@@ -546,7 +546,8 @@ func decodeArgAppend(dst, src []byte) []byte {
 	// slow path
 	for i := 0; i < len(src); i++ {
 		c := src[i]
-		if c == '%' {
+		switch c {
+		case '%':
 			if i+2 >= len(src) {
 				return append(dst, src[i:]...)
 			}
@@ -558,9 +559,9 @@ func decodeArgAppend(dst, src []byte) []byte {
 				dst = append(dst, x1<<4|x2)
 				i += 2
 			}
-		} else if c == '+' {
+		case '+':
 			dst = append(dst, ' ')
-		} else {
+		default:
 			dst = append(dst, c)
 		}
 	}

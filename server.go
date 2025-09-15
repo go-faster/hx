@@ -686,7 +686,7 @@ func (s *Server) writeFastError(w io.Writer, statusCode int, msg string) {
 		date = fmt.Sprintf("Date: %s\r\n", serverDate.Load())
 	}
 
-	fmt.Fprintf(w, "Connection: close\r\n"+
+	_, _ = fmt.Fprintf(w, "Connection: close\r\n"+
 		server+
 		date+
 		"Content-Type: text/plain\r\n"+

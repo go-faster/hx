@@ -1,3 +1,4 @@
+// Binary main implements techempower benchmark server using hx package.
 package main
 
 import (

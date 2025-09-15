@@ -1,3 +1,4 @@
+// Package hello-world implements binary for hello-world example.
 package main
 
 import (
@@ -15,11 +16,10 @@ func main() {
 		PprofAddr string
 	}
 	flag.StringVar(&arg.Addr, "addr", "localhost:8080", "listen address")
-	flag.StringVar(&arg.PprofAddr, "pprof-addr", "", "listen address for pprof")
 	flag.IntVar(&arg.Workers, "j", 500, "count of workers")
 	flag.Parse()
 	s := &hx.Server{
-		Workers: 500,
+		Workers: arg.Workers,
 		Handler: func(ctx *hx.Ctx) {
 			ctx.Response.AppendBodyString("Hello, world")
 		},
