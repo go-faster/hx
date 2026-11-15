@@ -549,7 +549,7 @@ func TestServerDisableHeaderNamesNormalizing(t *testing.T) {
 	}
 
 	rw := &readWriter{}
-	rw.r.WriteString(fmt.Sprintf("GET / HTTP/1.1\r\n%s: %s\r\nHost: google.com\r\n\r\n", headerName, headerValue))
+	fmt.Fprintf(&rw.r, "GET / HTTP/1.1\r\n%s: %s\r\nHost: google.com\r\n\r\n", headerName, headerValue)
 
 	if err := s.ServeConn(rw); err != nil {
 		t.Fatalf("Unexpected error from serveConn: %s", err)

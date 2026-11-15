@@ -99,7 +99,7 @@ func ParseIPv4(dst net.IP, ipStr []byte) (net.IP, error) {
 		if v > 255 {
 			return dst, fmt.Errorf("cannot parse ipStr %q: ip part cannot exceed 255: parsed %d", ipStr, v)
 		}
-		dst[i] = byte(v)
+		dst[i] = byte(v) //nolint:gosec // v is in [0, 255], checked above
 		b = b[n+1:]
 	}
 	v, err := ParseUint(b)
@@ -109,7 +109,7 @@ func ParseIPv4(dst net.IP, ipStr []byte) (net.IP, error) {
 	if v > 255 {
 		return dst, fmt.Errorf("cannot parse ipStr %q: ip part cannot exceed 255: parsed %d", ipStr, v)
 	}
-	dst[3] = byte(v)
+	dst[3] = byte(v) //nolint:gosec // v is in [0, 255], checked above
 
 	return dst, nil
 }
@@ -140,7 +140,7 @@ func AppendUint(dst []byte, n int) []byte {
 	for n >= 10 {
 		i--
 		q = n / 10
-		buf[i] = '0' + byte(n-q*10)
+		buf[i] = '0' + byte(n-q*10) //nolint:gosec // n-q*10 is a single decimal digit
 		n = q
 	}
 	i--
